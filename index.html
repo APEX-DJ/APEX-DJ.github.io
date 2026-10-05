@@ -522,6 +522,18 @@ html,body{max-width:100%;overflow-x:hidden}
   .list .row .more{width:26px}
   .list .row .r-t b{font-size:16px;font-weight:700;color:#fff;line-height:1.22}
 }
+/* long lists: a slim bar slides in at the top once the sort buttons scroll away */
+.minitop{position:sticky;top:-20px;height:0;z-index:6}
+@media (max-width:700px){ .minitop{top:-14px} }
+.minibar{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:nowrap;gap:6px;align-items:center;justify-content:center;padding:8px 6px;border-radius:0 0 14px 14px;
+  background:#090b13;border:1px solid var(--line);border-top:0;box-shadow:0 10px 24px rgba(0,0,0,.55);
+  transform:translateY(-130%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
+.content.scrolled .minibar{transform:none;opacity:1;pointer-events:auto}
+.minibar button{flex:none;min-height:34px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:700 13px var(--body)}
+.minibar button[aria-pressed="true"]{background:linear-gradient(90deg,var(--cyan),var(--violet));color:#0b0d18;border-color:transparent}
+.minibar .mplay{background:linear-gradient(90deg,var(--red),var(--gold));color:#1a0d00;border-color:transparent}
+.minibar .mtop{border-color:var(--gold);color:var(--gold)}
+.fixbar .bad-names{display:block;margin-top:4px;font-weight:700;color:var(--fg)}
 /* the Mac's instrumentals: orange everywhere, filed in their own Main Instrumentals folder */
 .row.inst{box-shadow:inset 3px 0 0 var(--orange)}
 .list .row.inst .r-t b,.row.inst .r-t b{color:var(--orange)}
@@ -2266,7 +2278,7 @@ async function importFiles(files, extra = {}) {
   if (!list.length) { toast("No music or video files were in that selection."); return []; }
   const added = [], pl = extra.noFolder ? null : (extra.playlist || curPl()); st.stopImport = false;
   let dups = list.filter(f => !/^hook - /i.test(f.name) && !/\(instrumental\)\.\w+$/i.test(f.name)).map(f => [f, dupOfFile(f)]).filter(([, t]) => t);
-  let skip = new Set(), repaired = 0;
+  let skip = new Set(), repaired = 0, already = 0;
   for (const [f, t] of dups) if (await isBroken(t)) { try { setBusy(`Repairing ${t.title}`); await repairTrack(t, f); skip.add(f); added.push(t); repaired++; } catch (e) {} }
   dups = dups.filter(([f]) => !skip.has(f));
   const ask = dups.filter(([f, t]) => t.fileName !== f.name); // the very same file added again just updates that song in place: no question
@@ -2280,7 +2292,7 @@ async function importFiles(files, extra = {}) {
     const have = [...st.tracks.values()].find(t => t.fileName === list[i].name && t.size === list[i].size);
     const older = !have && [...st.tracks.values()].find(t => t.fileName === list[i].name);
     if (older && !decks.some(d => d.track === older)) { try { if (await refreshFromFile(older, list[i])) { added.push(older); continue; } } catch (e) {} }
-    if (have) { added.push(have); continue; } // already in the library: just file it, don't copy it again
+    if (have) { added.push(have); already++; continue; } // already in the library: just file it, don't copy it again
     try { const t = await importOne(list[i]); added.push(t); await new Promise(r => setTimeout(r, 120)); } // a breather so memory can free up
     catch (e) {
       if (e && (e.name === "QuotaExceededError" || /quota/i.test(e.message || ""))) { toast("This device is out of storage space, so no more songs can be added. Free up space and try again.", 8000); break; }
@@ -2303,7 +2315,7 @@ async function importFiles(files, extra = {}) {
   if (pl && added.length) { for (const t of added) if (!pl.ids.includes(t.id)) pl.ids.push(t.id); await dbPut("playlists", pl); if (st.queueSource === pl.id) syncQueue(); }
   setBusy(""); renderAll();
   if (unsavedCount) { const n = unsavedCount; unsavedCount = 0; setTimeout(() => toast(`${n} song${n === 1 ? "" : "s"} will play now, but this device didn't keep ${n === 1 ? "its" : "their"} audio (storage full or blocked). Menu → Storage check shows why.`, 9000), 5600); }
-  const fresh = added.length - repaired;
+  const fresh = added.length - repaired - already;
   if (added.length && !extra.quiet) toast([repaired ? `Repaired ${repaired} song${repaired === 1 ? "" : "s"}` : "", fresh > 0 ? `added ${fresh} song${fresh === 1 ? "" : "s"}${pl ? " to " + pl.name : ""}` : ""].filter(Boolean).join(", ").replace(/^a/, "A") + ".", 5000);
   return added;
 }
@@ -2358,11 +2370,24 @@ async function storageCheck() {
     sh => { const b = sh.querySelector("#scFix"); if (b) b.onclick = () => { closeSheet(); readdMissing(); }; });
   renderAll();
 }
-function readdMissing() {
-  const n = [...st.tracks.values()].filter(t => t.bad).length;
-  if (!n) return toast("Every song's audio is there.");
+async function repairFromCopies() { // the same song is in the library twice and one copy still has its audio: share it
+  let fixed = 0;
+  for (const t of [...st.tracks.values()].filter(t => t.bad)) {
+    const k = dupKey(t.title, t.artist), twin = [...st.tracks.values()].find(u => u !== t && !u.bad && !u.isInst && (u.fileName === t.fileName || (dupKey(u.title, u.artist) === k && Math.abs((u.duration || 0) - (t.duration || 0)) < 3)));
+    if (!twin) continue;
+    try { const r = await dbGet("audio", twin.id); if (!r || !r.chunks) continue; await dbPut("audio", { ...r, id: t.id }); delete t.bad; await dbPut("tracks", t); fixed++; } catch (e) {}
+  }
+  return fixed;
+}
+async function readdMissing() {
+  if (![...st.tracks.values()].some(t => t.bad)) return toast("Every song's audio is there.");
+  const fixed = await repairFromCopies(); if (fixed) renderAll();
+  const left = [...st.tracks.values()].filter(t => t.bad);
+  if (!left.length) return toast(`Fixed ${fixed === 1 ? "it" : "all " + fixed}: the same song was in your library twice, so its other copy was used.`, 6000);
+  // a web app can't look through the phone's files by itself: you point at the file once, then it's repaired in place
   st.importTarget = null; st.repairing = true; $("#file").click();
-  toast(`Pick the ${n} song${n === 1 ? "" : "s"} marked ⚠ (you can select them all at once in Files). Each is repaired in place.`, 7000);
+  toast(left.length === 1 ? `Find “${left[0].fileName || left[0].title}”: type its name in the Search box at the top, or open its folder and tap Select All. Only the missing song is fixed; nothing gets added twice.`
+    : `Open the folder these came from (for example My Top 300) and tap Select All, then Open. Only the ${left.length} missing songs are fixed; nothing gets added twice.`, 12000);
 }
 function askDuplicates(dups) {
   return new Promise(res => {
@@ -2558,18 +2583,21 @@ function renderList() {
   const busy = `<div class="busy" id="busy" ${st.busy ? "" : "hidden"}><span>${esc(st.busy)}</span><button type="button" data-act="stopimport">Stop</button></div>`;
   let head = `<div class="vhead"><div class="titles"><h1 class="${pl ? "" : "tt"}">${esc(pl ? pl.name : "My DJ Library")}</h1>${stats}</div><div class="acts">`;
   const ord = st.sortClicked && !pl ? "" : S.plSort, mixView = ord === "mix" && !st.q && all.length > 1;
+  if (all.length > 1 && !st.sel) head = `<div class="minitop"><div class="minibar" role="toolbar" aria-label="Song order and play">${[["mix", "Mix"], ["bpm", "BPM"], ["alpha", "A–Z"]].map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}<button type="button" class="mplay" data-act="playall">▶ Play</button><button type="button" data-act="select">Select</button><button type="button" class="mtop" data-act="totop">↑ Top</button></div></div>` + head;
   if (mixView) head += `<div class="mixctl">Beat-mix songs that match <select data-mixmin aria-label="Minimum mix match">${[96, 92, 88, 84, 80].map(v => `<option value="${v}" ${S.mixMin === v ? "selected" : ""}>${v}%+</option>`).join("")}</select> · the rest <select data-unmatched aria-label="Songs below the match"><option value="play" ${S.unmatched !== "skip" ? "selected" : ""}>play after</option><option value="skip" ${S.unmatched === "skip" ? "selected" : ""}>are skipped</option></select></div>`;
   if (all.length > 1) head += `<div class="order" role="group" aria-label="Song order"><span>Order</span><button type="button" data-plsort="mix" aria-pressed="${ord === "mix"}" title="The order auto mix plays them: best mixes first">Mix order</button><button type="button" data-plsort="bpm" aria-pressed="${ord === "bpm"}">BPM</button><button type="button" data-plsort="alpha" aria-pressed="${ord === "alpha"}">A–Z</button></div>`;
   if (all.length) head += `<button class="btn primary" type="button" data-act="playall">${ICON_PLAY}Play ${pl ? "folder" : "all"}</button>`;
-  if (all.length && !st.sel) head += `<button class="btn ghost" type="button" data-act="select">Select</button>`;
+  if (all.length && !st.sel) head += `<button class="btn ghost" type="button" data-act="select">Select songs</button>`;
   if (pl) head += `<button class="btn ghost" type="button" data-act="renamepl">Rename</button><button class="btn ghost danger" type="button" data-act="delpl">Delete folder</button>`;
   head += `</div></div>`;
   if (st.sel && list.length) {
     const n = st.sel.size, allOn = list.every(t => st.sel.has(t.id));
     head += `<div class="selbar"><span class="cnt">${n} selected</span>
       <button class="btn" type="button" data-act="selall">${allOn ? "Unselect all" : `Select all (${list.length})`}</button>
+      <button class="btn primary" type="button" data-act="selplay" ${n ? "" : "disabled"}>▶ Play${n ? " " + n : ""}</button>
+      <button class="btn" type="button" data-act="selfolder" ${n ? "" : "disabled"}>+ Add to folder</button>
       ${pl ? `<button class="btn" type="button" data-act="selrm" ${n ? "" : "disabled"}>Remove from folder</button>` : ""}
-      <button class="btn primary" type="button" data-act="seldel" ${n ? "" : "disabled"}>Delete${n ? " " + n : ""}</button>
+      <button class="btn danger" type="button" data-act="seldel" ${n ? "" : "disabled"}>Delete${n ? " " + n : ""}</button>
       <button class="btn ghost" type="button" data-act="seldone">Done</button></div>`;
   }
   const flags = (S.novocals ? `<span class="flag nv">NO VOCALS</span>` : "") + (S.clean ? `<span class="flag cl">CLEAN</span>` : "");
@@ -2577,7 +2605,8 @@ function renderList() {
   if (st.dbNote === "blocked") head += `<div class="fixbar"><span>⏳ <b>Finishing an update.</b> Your songs are safe. If this stays, fully close ${FRAMED ? "the Claude app" : "the app"} (swipe it away in the app switcher) and open it again.</span></div>`;
   else if (st.dbNote && st.dbNote.startsWith("failed")) head += `<div class="fixbar"><span>⚠ This device isn't letting the app save right now (${esc(st.dbNote.slice(7))}). Songs you add will play until you close the app. ${FRAMED ? "Close the Claude app fully and reopen it, or use the Safari Home Screen app." : "Close the app fully and reopen it."}</span></div>`;
   const nBad = all.filter(t => t.bad).length;
-  if (nBad) head += `<div class="fixbar"><span>⚠ <b>${nBad}</b> song${nBad === 1 ? " needs its" : "s need their"} audio again. Pick the same files and they're repaired in place.</span><button class="btn primary" type="button" data-act="readd">Re-add missing songs</button></div>`;
+  if (nBad) { const bad = all.filter(t => t.bad), names = bad.slice(0, 3).map(t => `“${esc(nm(t.title))}”`).join(", ") + (nBad > 3 ? ` and ${nBad - 3} more` : "");
+    head += `<div class="fixbar"><span>⚠ ${nBad === 1 ? "This song is missing its audio on this device:" : `${nBad} songs are missing their audio on this device:`}<span class="bad-names">${names}</span></span><button class="btn primary" type="button" data-act="readd">Fix ${nBad === 1 ? "it" : "them"}</button><button class="btn ghost" type="button" data-act="badrm">Remove ${nBad === 1 ? "it" : "them"}</button></div>`; }
   let body;
   if (!st.tracks.size) {
     body = `<div class="empty"><h2>Add to My DJ Hit List</h2>
@@ -2603,7 +2632,7 @@ function renderList() {
         <div class="r-time">${fmt(t.duration)}</div>
         <button class="more" type="button" data-act="menu" aria-label="More for ${esc(t.title)}">${ICON_MORE}</button></div>`).join("") + `</div>`;
   }
-  $("#content").innerHTML = busy + head + body;
+  $("#content").innerHTML = busy + head + body; updateMinibar();
   $("#content").classList.toggle("selmode", !!st.sel);
 }
 function renderTransport() {
@@ -2842,7 +2871,7 @@ function hookSheet() {
 })();
 
 /* ---------- pick several songs to delete ---------- */
-function startSelect() { st.sel = new Set(); renderList(); toast("Tap the songs you want to delete, or Select all."); }
+function startSelect() { st.sel = new Set(); $("#content").scrollTop = 0; renderList(); toast("Tap songs to pick them (or Select all). Then ▶ Play just those, + Add them to a folder, or Delete them. Done when finished.", 8000); }
 function endSelect() { st.sel = null; renderList(); }
 async function deleteSelected(fromFolderOnly) {
   const ids = [...st.sel], pl = curPl(), playing = new Set(decks.filter(d => d.track).map(d => d.track.id));
@@ -2974,16 +3003,18 @@ function playNext(id) {
   st.queue.splice(st.qi + 1, 0, id); st.nextI = st.qi + 1; st.forcedNext = true; st.played.delete(id);
   renderPlayerText(); toast(`“${t.title}” plays next.`);
 }
-function addToPlaylist(id) {
-  const t = st.tracks.get(id);
-  openSheet(`<h2>Add to folder</h2><p>${esc(t.title)}</p><div class="menu">${st.playlists.map(p => `<button type="button" data-pl="${p.id}">${esc(p.name)}${p.ids.includes(id) ? " (already in it)" : ""}</button>`).join("")}</div>
+function addToPlaylist(idOrIds) {
+  const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds], id = ids[0], t = st.tracks.get(id), many = ids.length > 1;
+  const label = many ? `${ids.length} songs` : esc(t.title), done = () => { if (many) { st.sel = null; } };
+  openSheet(`<h2>Add to folder</h2><p>${label}</p><div class="menu">${st.playlists.map(p => `<button type="button" data-pl="${p.id}">${esc(p.name)}${!many && p.ids.includes(id) ? " (already in it)" : ""}</button>`).join("")}</div>
     <form class="newpl" id="np2" style="display:flex"><input id="np2name" placeholder="New folder title" aria-label="New folder title" maxlength="60"><button class="btn" type="submit">Create and add</button></form>
     <div class="foot"><button class="btn" type="button" data-close>Done</button></div>`, s => {
     s.querySelectorAll("[data-pl]").forEach(b => b.addEventListener("click", async () => {
-      const p = st.playlists.find(x => x.id === b.dataset.pl); if (!p.ids.includes(id)) { p.ids.push(id); await dbPut("playlists", p); if (st.queueSource === p.id) syncQueue(); }
-      closeSheet(); renderAll(); toast(`Added to ${p.name}.`);
+      const p = st.playlists.find(x => x.id === b.dataset.pl); let n = 0; for (const x of ids) if (!p.ids.includes(x)) { p.ids.push(x); n++; }
+      if (n) { await dbPut("playlists", p); if (st.queueSource === p.id) syncQueue(); }
+      done(); closeSheet(); renderAll(); toast(many ? `Added ${n} song${n === 1 ? "" : "s"} to ${p.name}${n < ids.length ? ` (${ids.length - n} were already in it)` : ""}.` : `Added to ${p.name}.`);
     }));
-    s.querySelector("#np2").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#np2name").value.trim(); if (!n) return; const p = await createPlaylist(n, [id]); closeSheet(); renderAll(); toast(`Added to ${p.name}.`); });
+    s.querySelector("#np2").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#np2name").value.trim(); if (!n) return; const p = await createPlaylist(n, [...ids]); done(); closeSheet(); renderAll(); toast(many ? `Made “${p.name}” with ${ids.length} songs.` : `Added to ${p.name}.`); });
   });
 }
 async function markOldInstrumentals() { // instrumentals added before 6.89 went in as songs: file them by name (never loads any audio)
@@ -3202,8 +3233,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.90";
+const APP_VERSION = "6.91";
 const CHANGELOG = [
+  ["6.91", "October 5, 2026", ["Long lists: once the sort buttons scroll away, a slim bar stays at the top with Mix / BPM / A–Z, Play, Select and ↑ Top", "Select songs: pick songs, then ▶ Play just those (in the best mix order), + Add them to a folder, or Delete them", "Missing audio: the message names the song, Fix it uses another copy already in your library when there is one, and Remove takes it out", "Adding a folder again no longer counts songs that were already there as new"]],
   ["6.90", "October 5, 2026", ["Fixed: the app could close by itself at startup (\"A problem repeatedly occurred\") when instrumentals had been added as songs: they're now sorted by name without loading any audio", "If the app ever does close while starting, the next start skips background clean-up so it can't happen twice in a row", "After a restart your play list is still there: Play continues the same song where it was, and Next keeps going instead of saying the list ended", "Songs load with less memory (unpacked at CD rate, no extra copy), so long mixing sessions on iPhone stay well within its limits"]],
   ["6.89", "October 5, 2026", ["Fixed: tapping ahead on the song bar to test a mix could close the app on iPhone (the next song was being loaded twice at once); each song now loads once, and the old song's memory is freed after every mix", "Main Instrumentals: the Mac's instrumentals get their own orange folder and stay out of My DJ Library", "Instrumental only now plays a song's real instrumental when you have it (spotless), and takes the vocals out of the rest", "Phones: song titles get much more room and bigger, brighter text"]],
   ["6.88", "October 5, 2026", ["Ready for its own web address (apex-dj.github.io): opens full screen from the Home Screen, with no Claude bar, and opens with no signal", "Your DJ drops stay private: add them once from iCloud Drive › Apex Studios DJ App › DJ Drops and they're kept on this device only", "Save to my device works for recordings everywhere (the iPhone share sheet: Save to Files)"]],
@@ -3392,6 +3424,11 @@ $("#viewSel").onchange = e => { const v = e.target.value; if (v === "__new") { e
 $("#moreBtn").onclick = () => { const p = document.querySelector(".player"), open = !p.classList.contains("open"); p.classList.toggle("open", open); $("#moreBtn").setAttribute("aria-expanded", open); $("#moreBtn").setAttribute("aria-label", open ? "Hide extra controls" : "Show all controls"); };
 $("#wakeBtn").onclick = () => setWake(!wantWake);
 $("#q").addEventListener("input", e => { st.q = e.target.value.trim(); renderList(); });
+function updateMinibar() {
+  const c = $("#content"), o = c.querySelector(".vhead .order") || c.querySelector(".vhead .acts");
+  c.classList.toggle("scrolled", !!(o && !st.sel && o.getBoundingClientRect().bottom < c.getBoundingClientRect().top + 4));
+}
+$("#content").addEventListener("scroll", updateMinibar, { passive: true });
 document.querySelectorAll(".bar").forEach(b => b.addEventListener("click", e => {
   const d = decks[+b.dataset.deck]; if (!d.track || mix || d !== A()) return;
   const r = b.getBoundingClientRect(); d.el.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * (d.el.duration || 0); d.plan = null; // the next song stays loaded
@@ -3409,6 +3446,12 @@ document.addEventListener("click", e => {
     case "pick": { if (!st.sel) break; st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id); const y = $("#content").scrollTop; renderList(); $("#content").scrollTop = y; break; }
     case "select": startSelect(); break;
     case "readd": readdMissing(); break;
+    case "badrm": { const bad = [...st.tracks.values()].filter(t => t.bad); confirmSheet(`Remove ${bad.length === 1 ? "it" : bad.length + " songs"}?`, `${bad.slice(0, 5).map(t => "“" + nm(t.title) + "”").join(", ")}${bad.length > 5 ? "…" : ""} will be taken out of the app. You can add ${bad.length === 1 ? "it" : "them"} again any time.`, "Remove", async () => { for (const t of bad) await deleteTrack(t.id, true); renderAll(); toast("Removed."); }); break; }
+    case "totop": $("#content").scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "selplay": { let ids = viewTracks().filter(t => st.sel.has(t.id) && !t.bad).map(t => t.id); if (!ids.length) break;
+      if (S.plSort === "mix" && ids.length > 1) ids = bestOrder(ids).order;
+      st.sel = null; renderList(); setQueue(ids); st.queueSource = null; hardPlay(0); toast(`Playing your ${ids.length} picked song${ids.length === 1 ? "" : "s"}${S.plSort === "mix" && ids.length > 1 ? ", in the best mix order" : ""}.`, 5000); break; }
+    case "selfolder": { const ids = viewTracks().filter(t => st.sel.has(t.id)).map(t => t.id); if (ids.length) addToPlaylist(ids); break; }
     case "selall": { const ids = viewTracks().map(t => t.id), allOn = ids.every(x => st.sel.has(x)); ids.forEach(x => allOn ? st.sel.delete(x) : st.sel.add(x)); renderList(); break; }
     case "seldel": deleteSelected(false); break;
     case "selrm": deleteSelected(true); break;

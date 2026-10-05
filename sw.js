@@ -1,5 +1,5 @@
 // Apex Studios DJ App — keeps the app itself on the phone. Your songs live in the app's own storage, not here.
-const V = "apex-6.90";
+const V = "apex-6.91";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "logo-poster.jpg", "icon-180.png", "icon-512.png", "icon-64.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(
