@@ -515,6 +515,17 @@ html,body{max-width:100%;overflow-x:hidden}
 .empty .acts{flex-direction:column;align-items:center;justify-content:center}
 .empty .tips{text-align:left;width:100%}
 @media (max-width:860px) and (min-width:701px){ .titlebox .ver{display:none} }
+/* phones: the song title gets every bit of room left over by the number, BPM/key and ⋯ (this sits last on purpose) */
+@media (max-width:700px){
+  .list .row{grid-template-columns:22px minmax(0,1fr) auto 26px;grid-template-areas:"n t b m" "n t k m";gap:2px 6px;padding:8px 4px}
+  .list .row .r-n{width:22px;height:22px;font-size:11px}
+  .list .row .more{width:26px}
+  .list .row .r-t b{font-size:16px;font-weight:700;color:#fff;line-height:1.22}
+}
+/* the Mac's instrumentals: orange everywhere, filed in their own Main Instrumentals folder */
+.row.inst{box-shadow:inset 3px 0 0 var(--orange)}
+.list .row.inst .r-t b,.row.inst .r-t b{color:var(--orange)}
+.dt b.inst,#miniTitle.inst{color:var(--orange)}
 /* on its own web address from the Home Screen: stay clear of the clock, notch and rounded corners (all 0 inside the Claude app) */
 .app{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px)}
 </style>
@@ -1240,7 +1251,12 @@ function resetFx(d) {
   setParam(d.low.gain, 0); setParam(d.mid.gain, 0); setParam(d.high.gain, 0); setParam(d.hp.frequency, 10); setParam(d.lp.frequency, NYQ());
   setParam(d.send.gain, 0); setParam(d.rsend.gain, 0); setPitchLock(d, true);
 }
-async function loadDeck(d, t) {
+async function loadDeck(d, t) { // the same song asked for twice on the same deck: wait for the first load, never decode it twice
+  if (d.loading && d.loading.t === t) return d.loading.p;
+  const p = loadDeckNow(d, t); d.loading = { t, p };
+  try { return await p; } finally { if (d.loading && d.loading.p === p) d.loading = null; }
+}
+async function loadDeckNow(d, t) {
   let blob = null; try { blob = await audioBlob(t.id); } catch (e) {}
   if (!blob) throw new Error("The audio file for this song is missing. Add it again.");
   if (!blob.size) throw new Error("The file is empty. It may not have finished downloading from iCloud: delete it and add it again.");
@@ -1479,12 +1495,14 @@ function applyFlavor(f, from, swap, end, beat) {
 }
 async function startMix(manual = false) {
   if (mix || st.nextI == null || !A().track) return;
-  ensureCtx(); await actx.resume().catch(() => {});
+  ensureCtx();
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track;
   if (!nt) return;
   const plan = manual ? manualPlan(from) : planFor(from);
-  mix = { pending: true, from, to, nextI };
+  mix = { pending: true, from, to, nextI }; // claimed right away: the playback loop must never start a second mix while this one gets ready
   ease = null;
+  await actx.resume().catch(() => {});
+  if (mix == null || mix.to !== to) return;
   const ready = prep && prep.ready && prep.deck === to && prep.id === nt.id && to.track === nt;
   prep = null;
   if (!ready) {
@@ -1610,10 +1628,12 @@ function alignLag(bufA, posA, bufB, posB, dur) {
 }
 async function startProMix() {
   if (mix || st.nextI == null || !A().track) return;
-  ensureCtx(); await actx.resume().catch(() => {});
+  ensureCtx();
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track, plan = planFor(from);
   if (!nt || !plan.pro) return startMix();
-  mix = { pending: true, from, to, nextI }; ease = null;
+  mix = { pending: true, from, to, nextI }; ease = null; // claimed right away: no second mix can start while this one gets ready
+  await actx.resume().catch(() => {});
+  if (!mix || mix.to !== to) return;
   const ready = prep && prep.ready && prep.deck === to && prep.id === nt.id && to.track === nt; prep = null;
   if (!ready) {
     try { await loadDeck(to, nt); }
@@ -1888,6 +1908,7 @@ function finishMix() {
   const { from, to } = m;
   clearInterval(brakeTimer); brakeTimer = null;
   clearTimeout(m.releaseTimer); if (from.el.clearLoop) from.el.clearLoop(); from.el.pause(); setParam(from.gain.gain, 0); resetFx(from); from.track = null; from.el.playbackRate = 1;
+  if (from.bp && from.el === from.bp) from.bp.load(null); // let go of the old song's audio right away: phones have little memory to spare
   setParam(to.gain.gain, 1); resetFx(to); if (!m.pro) to.el.playbackRate = m.rate;
   active = to.i; st.qi = m.nextI; st.played.add(to.track.id); st.forcedNext = false;
   if (m.pro) {
@@ -2113,15 +2134,17 @@ function deckEnded(d) {
 }
 decks.forEach(d => d.media.addEventListener("ended", () => { if (d.el === d.media) deckEnded(d); }));
 /* songs added before 6.78 get the precise beat grid the first time they're loaded */
+const refining = new WeakSet();
 function refineTrack(t, buf) {
-  if ((t.fine === 2 && t.rhythm && t.energy != null) || !buf) return;
+  if ((t.fine === 2 && t.rhythm && t.energy != null) || !buf || refining.has(t)) return;
+  refining.add(t);
   try {
     const an = analyzeBuffer(buf, { hintBpm: t.bpm, skipKey: true });
     Object.assign(t, { bpm: an.bpm, beatOffset: an.beatOffset, grid: an.grid, fine: 2, rhythm: an.rhythm, energy: an.energy });
     if (t.autoOut == null && an.autoOut != null) t.autoOut = an.autoOut;
     dbPut("tracks", t); decks.forEach(d => { if (d.track === t && !(mix && (mix.from === d || mix.to === d))) { d.plan = null; if (d.el instanceof BufferPlayer) d.el.playbackRate = Math.round(t.bpm) / t.bpm; } });
     renderPlayerText();
-  } catch (e) {}
+  } catch (e) {} finally { refining.delete(t); }
 }
 
 /* ---------- app state ---------- */
@@ -2133,7 +2156,7 @@ function viewTracks() {
   const pl = curPl();
   if (pl) list = orderPl(pl);
   else {
-    list = [...st.tracks.values()];
+    list = libAll();
     if (S.plSort === "mix" && !st.sortClicked) list = mixOrder(list.map(t => t.id));
     else if (S.plSort === "bpm" && !st.sortClicked) list.sort((a, b) => (a.bpm || 999) - (b.bpm || 999) || a.title.localeCompare(b.title));
     else if (S.plSort === "alpha" && !st.sortClicked) list.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }));
@@ -2163,11 +2186,23 @@ function syncQueueBest() { // re-plan what's left of the queue after a setting c
   const rest = [...new Set(st.queue)]; const o = bestOrder(rest, cur);
   st.queue = S.unmatched === "skip" ? o.order.slice(0, Math.max(1, o.chained)) : o.order; st.qi = 0; st.forcedNext = false;
 }
-function setQueue(ids) { st.queue = ids.filter(id => { const t = st.tracks.get(id); return t && !t.bad; }); st.queueSource = curPl() && !st.q ? curPl().id : null; st.played = new Set(); st.forcedNext = false; }
+function instSwap(ids) {
+  const byOf = instMap(), byFile = new Map(), fromInstFolder = (st.playlists.find(p => p.id === st.queueSource) || {}).name === INST_FOLDER;
+  for (const t of st.tracks.values()) if (!t.isInst && t.fileName && !t.bad) byFile.set(t.fileName, t);
+  return [...new Set(ids.map(id => {
+    const t = st.tracks.get(id); if (!t) return id;
+    if (S.novocals && !t.isInst) { const it = byOf.get(t.fileName); return it ? it.id : id; }
+    if (!S.novocals && t.isInst && !fromInstFolder) { const o = byFile.get(t.instOf); return o ? o.id : id; }
+    return id;
+  }))];
+}
+function setQueue(ids) {
+  st.queueSource = curPl() && !st.q ? curPl().id : null; ids = instSwap(ids);
+  st.queue = ids.filter(id => { const t = st.tracks.get(id); return t && !t.bad; }); st.queueSource = curPl() && !st.q ? curPl().id : null; st.played = new Set(); st.forcedNext = false; }
 function syncQueue() {
   const pl = st.playlists.find(p => p.id === st.queueSource); if (!pl) return;
   const curId = A().track && A().track.id, forced = st.forcedNext && st.nextI != null ? st.queue[st.nextI] : null;
-  st.queue = S.nextMode === "best" ? (st.mixPlan = bestOrder(orderPl(pl).map(t => t.id), curId)).order : orderPl(pl).map(t => t.id); st.qi = curId ? st.queue.indexOf(curId) : -1;
+  st.queue = S.nextMode === "best" ? (st.mixPlan = bestOrder(orderPl(pl).map(t => t.id), curId)).order : orderPl(pl).map(t => t.id); st.queue = instSwap(st.queue); st.qi = curId ? st.queue.indexOf(curId) : -1;
   if (st.qi < 0 && curId) { st.queue.unshift(curId); st.qi = 0; }
   if (forced) { st.queue.splice(st.qi + 1, 0, forced); st.nextI = st.qi + 1; } else st.forcedNext = false;
   computeNext();
@@ -2203,11 +2238,12 @@ async function importFiles(files, extra = {}) {
   const list = [...files].filter(f => /^(audio|video)\//.test(f.type) || AUDIO_RX.test(f.name));
   if (!list.length) { toast("No music or video files were in that selection."); return []; }
   const added = [], pl = extra.noFolder ? null : (extra.playlist || curPl()); st.stopImport = false;
-  let dups = list.filter(f => !/^hook - /i.test(f.name)).map(f => [f, dupOfFile(f)]).filter(([, t]) => t);
+  let dups = list.filter(f => !/^hook - /i.test(f.name) && !/\(instrumental\)\.\w+$/i.test(f.name)).map(f => [f, dupOfFile(f)]).filter(([, t]) => t);
   let skip = new Set(), repaired = 0;
   for (const [f, t] of dups) if (await isBroken(t)) { try { setBusy(`Repairing ${t.title}`); await repairTrack(t, f); skip.add(f); added.push(t); repaired++; } catch (e) {} }
   dups = dups.filter(([f]) => !skip.has(f));
-  if (dups.length && !extra.quiet) { if (await askDuplicates(dups) === "skip") { skip = new Set(dups.map(([f]) => f)); dups.forEach(([, t]) => added.push(t)); } }
+  const ask = dups.filter(([f, t]) => t.fileName !== f.name); // the very same file added again just updates that song in place: no question
+  if (ask.length && !extra.quiet) { if (await askDuplicates(ask) === "skip") { ask.forEach(([f, t]) => { skip.add(f); added.push(t); }); } }
   for (let i = 0; i < list.length; i++) {
     if (st.stopImport) break;
     setBusy(`Adding ${(i + 1).toLocaleString()} of ${list.length.toLocaleString()}: ${list[i].name}`);
@@ -2227,6 +2263,14 @@ async function importFiles(files, extra = {}) {
   }
   const hooksAdded = added.filter(t => t.isHook).length, dropsAdded = added.filter(t => t.isDrop).length;
   for (let k = added.length - 1; k >= 0; k--) if (added[k].isHook || added[k].isDrop) added.splice(k, 1);
+  const insts = added.filter(t => t.isInst);
+  if (insts.length) {
+    const ip = st.playlists.find(p => p.name === INST_FOLDER) || await createPlaylist(INST_FOLDER, []);
+    for (const t of insts) if (!ip.ids.includes(t.id)) ip.ids.push(t.id);
+    await dbPut("playlists", ip);
+    if (pl !== ip) for (let k = added.length - 1; k >= 0; k--) if (added[k].isInst) added.splice(k, 1);
+    setTimeout(() => toast(`${insts.length} instrumental${insts.length === 1 ? "" : "s"} filed in ${INST_FOLDER} (shown in orange).`, 5000), 900);
+  }
   if (dropsAdded) setTimeout(() => toast(`Added ${dropsAdded} DJ drop${dropsAdded === 1 ? "" : "s"}. They're kept on this device only.`, 5000), 400);
   if (hooksAdded) setTimeout(() => toast(`Added ${hooksAdded} vocal hook${hooksAdded === 1 ? "" : "s"} for mashups. Menu → Vocal hooks.`, 5000), 5200);
   if (pl && added.length) { for (const t of added) if (!pl.ids.includes(t.id)) pl.ids.push(t.id); await dbPut("playlists", pl); if (st.queueSource === pl.id) syncQueue(); }
@@ -2252,6 +2296,7 @@ function dupOfFile(f) {
   const n = nameFromFile(f.name), k = dupKey(n.title, n.artist), kt = dupNorm(n.title), base = dupNorm(f.name);
   for (const t of st.tracks.values()) {
     if (t.fileName === f.name) return t;
+    if (t.isInst) continue; // a song and its own instrumental are a pair, not duplicates
     if (dupNorm(t.fileName) === base || dupKey(t.title, t.artist) === k || (kt.length > 6 && dupNorm(t.title + " " + t.artist).includes(kt) && dupNorm(t.title).length >= kt.length - 2)) return t;
   }
   return null;
@@ -2342,6 +2387,7 @@ async function importOne(f) {
   applyApex(t, tags.apex);
   try { if (tags.explicit && t.apex && tags.apex && /"sc":1/.test(tags.apex)) t.explicit = JSON.parse(tags.explicit).filter(x => Array.isArray(x) && x.length >= 2); } catch (e) {}
   if (!t.explicit && /\b(clean|radio edit|instrumental|acapella free)\b/i.test(t.title + " " + f.name)) t.explicit = [];
+  if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} t.isInst = true; t.instOf = ii.of || ""; t.explicit = []; t.cleanChecked = 1; }
   // a real copy of the audio, saved as plain binary and read back to prove it landed
   sessionAudio.set(id, f);
   try { await saveAudio(id, buf, f.type); }
@@ -2388,6 +2434,7 @@ async function refreshFromFile(t, f) {
   if (!tags.apex && !tags.explicit && !(await isBroken(t))) return false;
   applyApex(t, tags.apex);
   try { if (tags.explicit && tags.apex && /"sc":1/.test(tags.apex)) t.explicit = JSON.parse(tags.explicit); } catch (e) {}
+  if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} Object.assign(t, { isInst: true, instOf: ii.of || "", explicit: [], cleanChecked: 1 }); }
   sessionAudio.set(t.id, f); if (!(await dbHas("audio", t.id))) await saveAudio(t.id, buf.slice(0), f.type); t.size = f.size; t.fine = 0; delete t.bad;
   await dbPut("tracks", t); return true;
 }
@@ -2449,12 +2496,16 @@ function setBusy(s) { st.busy = s; const b = $("#busy"); if (b) { b.hidden = !s;
 function renderAll() { renderSide(); renderList(); renderPlayerText(); renderTransport(); lsSet("cb.count", st.tracks.size); }
 const CRATE_COLORS = ["var(--red)", "var(--gold)", "var(--cyan)", "var(--violet)", "var(--pink)", "var(--green)", "var(--orange)"];
 const plTracks = p => p.ids.map(id => st.tracks.get(id)).filter(Boolean);
+const INST_FOLDER = "Main Instrumentals";
+const libAll = () => [...st.tracks.values()].filter(t => !t.isInst); // My DJ Library: every song except the instrumentals (they have their own folder)
+const instMap = () => { const m = new Map(); for (const t of st.tracks.values()) if (t.isInst && t.instOf && !t.bad) m.set(t.instOf, t); return m; };
 const totalTime = list => list.reduce((s, t) => s + (t.duration || 0), 0);
 function fmtLong(sec) { sec = Math.round(sec || 0); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = String(sec % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; }
 function renderSide() {
-  const crate = ([id, name, list], i) => `<button class="crate" type="button" data-view="${esc(id)}" aria-current="${st.view === id}" style="--c:${CRATE_COLORS[i % CRATE_COLORS.length]}"><span class="n">${esc(name)}</span><span class="c num">${list.length.toLocaleString()} song${list.length === 1 ? "" : "s"}<br>${fmtLong(totalTime(list))}</span></button>`;
-  $("#crates").innerHTML = crate(["library", "My DJ Library", [...st.tracks.values()]], 0);
-  $("#viewSel").innerHTML = `<option value="library">My DJ Library (${st.tracks.size.toLocaleString()} song${st.tracks.size === 1 ? "" : "s"} · ${fmtLong(totalTime([...st.tracks.values()]))})</option>`
+  const crate = ([id, name, list], i) => `<button class="crate" type="button" data-view="${esc(id)}" aria-current="${st.view === id}" style="--c:${name === INST_FOLDER ? "#ff8a3d" : CRATE_COLORS[i % CRATE_COLORS.length]}"><span class="n">${esc(name)}</span><span class="c num">${list.length.toLocaleString()} song${list.length === 1 ? "" : "s"}<br>${fmtLong(totalTime(list))}</span></button>`;
+  const lib = libAll();
+  $("#crates").innerHTML = crate(["library", "My DJ Library", lib], 0);
+  $("#viewSel").innerHTML = `<option value="library">My DJ Library (${lib.length.toLocaleString()} song${lib.length === 1 ? "" : "s"} · ${fmtLong(totalTime(lib))})</option>`
     + st.playlists.map(p => { const t = plTracks(p); return `<option value="${esc(p.id)}">${esc(p.name)} (${t.length.toLocaleString()} song${t.length === 1 ? "" : "s"} · ${fmtLong(totalTime(t))})</option>`; }).join("")
     + `<option value="__new">+ New folder…</option>`;
   $("#viewSel").value = st.view;
@@ -2474,7 +2525,7 @@ function mixTagFor(prev, t, i) { // how this song comes in after the one above i
 function renderList() {
   const pl = curPl(), list = viewTracks(), ref = A().track;
   if (st.view !== "library" && !pl) { st.view = "library"; }
-  const all = pl ? pl.ids.map(id => st.tracks.get(id)).filter(Boolean) : [...st.tracks.values()];
+  const all = pl ? pl.ids.map(id => st.tracks.get(id)).filter(Boolean) : libAll();
   const bpms = all.map(t => t.bpm).filter(Boolean);
   const stats = `<div class="stats"><span class="stat songs"><b>${all.length.toLocaleString()}</b>song${all.length === 1 ? "" : "s"}</span><span class="stat time"><b>${fmtLong(totalTime(all))}</b>total time</span>${bpms.length ? `<span class="stat tempo"><b>${Math.round(Math.min(...bpms))}–${Math.round(Math.max(...bpms))}</b>BPM</span>` : ""}</div>`;
   const busy = `<div class="busy" id="busy" ${st.busy ? "" : "hidden"}><span>${esc(st.busy)}</span><button type="button" data-act="stopimport">Stop</button></div>`;
@@ -2517,7 +2568,7 @@ function renderList() {
     const sh = (k, label, cls = "") => pl ? `<span class="${cls}">${label}</span>` : `<button type="button" class="${cls}" data-sort="${k}" ${st.sort.k === k ? `data-dir="${st.sort.dir > 0 ? "↑" : "↓"}"` : ""}>${label}</button>`;
     body = `<div class="list" role="list"><div class="lhead"><span>#</span>${sh("title", "Title / Artist")}${sh("bpm", "BPM")}${sh("key", "Key")}${sh("time", "Time", "h-time")}<span></span></div>`
       + list.map((t, i) => (mixView && i === mixOrderCache.chained && i < list.length && i > 0 ? `<div class="mixsep">${S.unmatched === "skip" ? `Below ${S.mixMin}% match: these won't play in auto mix` : `Below ${S.mixMin}%: these play after, highest BPM first, with tempo rides and power cuts`}</div>` : "")
-        + `<div class="row ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
+        + `<div class="row ${t.isInst ? "inst" : ""} ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
         ${st.sel ? `<input class="pick" type="checkbox" data-act="pick" ${st.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}">` : `<button class="r-n" type="button" data-act="play" aria-label="Play ${esc(t.title)}"><span>${i + 1}</span>${ICON_PLAY}</button>`}
         <button class="r-t" type="button" data-act="${st.sel ? "pick" : "play"}"><b>${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${S.clean && scanned(t) ? (t.explicit.length ? `<span class="ex" title="${t.explicit.length} cuss words filtered">E ${t.explicit.length}</span>` : `<span class="ex ok" title="Checked: no cuss words">✓</span>`) : ""}</b><small>${mixView && i > 0 ? mixTagFor(list[i - 1], t, i) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}<span class="mt num"> · ${fmt(t.duration)}</span></small></button>
         <div class="r-b ${t.bpm ? "" : "none"}" style="--bh:${t.bpm ? Math.round(clamp(230 - (t.bpm - 70) * 2.6, 0, 230)) : 200}" title="${t.bpmAuto ? "Detected automatically" : "From you or the file"}">${t.bpm ? Math.round(t.bpm) : "–"}</div>
@@ -2545,7 +2596,7 @@ function renderPlayerText() {
   decks.forEach(d => {
     const el = $("#deck" + d.i), t = d.track;
     el.classList.toggle("live", !!t); el.classList.toggle("act", d === A());
-    el.querySelector(".dt").innerHTML = t ? `<b>${esc(nm(t.title))}</b><small>${esc(nm(t.artist))}</small>` : `<b>Empty</b><small></small>`;
+    el.querySelector(".dt").innerHTML = t ? `<b class="${t.isInst ? "inst" : ""}">${esc(nm(t.title))}</b><small>${esc(nm(t.artist))}</small>` : `<b>Empty</b><small></small>`;
   });
   const up = $("#upnext"), cur = A().track, nt = st.nextI != null ? st.tracks.get(st.queue[st.nextI]) : null;
   if (!cur) { up.innerHTML = `<span class="lab">Up next</span><div class="what"><span>Pick a song or press play.</span></div>`; return; }
@@ -2624,6 +2675,7 @@ const nm = txt => S.clean ? String(txt || "").replace(BAD_RX, w => w[0] + "*".re
 const scanned = t => Array.isArray(t && t.explicit);
 const VOX_RANK = { dry: 0, duck: 1, kar: 2, mute: 3 };
 function voxWanted(d, pos) {
+  if (d.track && d.track.isInst) return "dry";
   const base = voxBase(d, pos);
   if (!mix || mix.pending || !mix.pro || !actx) return base;
   const m = d === mix.from && mix.karAt != null && actx.currentTime >= mix.karAt ? "kar" : "dry";
@@ -2662,7 +2714,13 @@ function renderVox() {
   $("#voxItem span").textContent = S.novocals ? "Vocals off (on now)" : "Vocals off (instrumental)";
   $("#cleanItem span").textContent = S.clean ? "Clean mode (on now)" : "Clean mode (cuss word filter)";
 }
-function toggleVocals() { S.novocals = !S.novocals; saveS(); renderVox(); voxFrame(); renderAll(); toast(S.novocals ? "Instrumental only: every song and mix plays without vocals." : "Vocals back on."); }
+function toggleVocals() {
+  S.novocals = !S.novocals; saveS();
+  if (st.queue.length) { const done = st.queue.slice(0, st.qi + 1), rest = instSwap(st.queue.slice(st.qi + 1)).filter(id => !done.includes(id)); st.queue = done.concat(rest); st.forcedNext = false; computeNext(); }
+  renderVox(); voxFrame(); renderAll();
+  const n = instMap().size;
+  toast(S.novocals ? (n ? `Instrumental only: songs with a real instrumental (${n}, in orange) play that; the rest play with the vocals taken out.` : "Instrumental only: every song and mix plays without vocals.") : "Vocals back on.", 6000);
+}
 function toggleClean() {
   S.clean = !S.clean; saveS(); renderVox(); voxFrame(); renderAll();
   if (!S.clean) return toast("Clean mode off.");
@@ -2901,6 +2959,23 @@ function addToPlaylist(id) {
     s.querySelector("#np2").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#np2name").value.trim(); if (!n) return; const p = await createPlaylist(n, [id]); closeSheet(); renderAll(); toast(`Added to ${p.name}.`); });
   });
 }
+async function markOldInstrumentals() { // instrumentals added before 6.89 went in as songs: find them by their Mac tag and file them
+  const cand = [...st.tracks.values()].filter(t => !t.isInst && !t.instChecked && /\(instrumental\)/i.test(t.title + " " + (t.fileName || "")));
+  const found = [];
+  for (const t of cand) {
+    try {
+      const b = await audioBlob(t.id); if (!b) continue;
+      const tags = readID3(await b.slice(0, 1 << 20).arrayBuffer());
+      if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} Object.assign(t, { isInst: true, instOf: ii.of || "", explicit: [], cleanChecked: 1 }); found.push(t); }
+      t.instChecked = 1; await dbPut("tracks", t);
+    } catch (e) {}
+  }
+  if (!found.length) return;
+  const ip = st.playlists.find(p => p.name === INST_FOLDER) || await createPlaylist(INST_FOLDER, []);
+  for (const t of found) if (!ip.ids.includes(t.id)) ip.ids.push(t.id);
+  await dbPut("playlists", ip); renderAll();
+  toast(`Moved ${found.length} instrumental${found.length === 1 ? "" : "s"} out of My DJ Library into ${INST_FOLDER}.`, 6000);
+}
 async function createPlaylist(name, ids = []) { const p = { id: uid(), name, ids, created: Date.now() }; st.playlists.push(p); await dbPut("playlists", p); return p; }
 async function removeFromPl(id) { const p = curPl(); p.ids = p.ids.filter(x => x !== id); await dbPut("playlists", p); if (st.queueSource === p.id) syncQueue(); renderAll(); }
 async function deleteTrack(id, quiet) {
@@ -3102,8 +3177,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.88";
+const APP_VERSION = "6.89";
 const CHANGELOG = [
+  ["6.89", "October 5, 2026", ["Fixed: tapping ahead on the song bar to test a mix could close the app on iPhone (the next song was being loaded twice at once); each song now loads once, and the old song's memory is freed after every mix", "Main Instrumentals: the Mac's instrumentals get their own orange folder and stay out of My DJ Library", "Instrumental only now plays a song's real instrumental when you have it (spotless), and takes the vocals out of the rest", "Phones: song titles get much more room and bigger, brighter text"]],
   ["6.88", "October 5, 2026", ["Ready for its own web address (apex-dj.github.io): opens full screen from the Home Screen, with no Claude bar, and opens with no signal", "Your DJ drops stay private: add them once from iCloud Drive › Apex Studios DJ App › DJ Drops and they're kept on this device only", "Save to my device works for recordings everywhere (the iPhone share sheet: Save to Files)"]],
   ["6.87", "October 5, 2026", ["Song titles get the room on phones: BPM and key sit together on the right, and long titles wrap to two lines", "Instrumental only: a switch right next to Auto mix plays every song and mix without vocals", "Clean mode only trusts songs your Mac has really checked; until then they play without vocals. Clean always takes out the full word list (damn, shit, hell, crap, the f-, b- and n-words and their slang spellings) — no settings to remember", "Choose the mix match (96, 92, 88, 84 or 80%) and whether songs below it play after or are skipped; in Mix order each song shows how it comes in: mix %, tempo ride, power cut or skipped"]],
   ["6.86", "October 5, 2026", ["Fixed: adding a big batch of songs on iPhone could stop with \"the database connection is closing\". The app now reconnects to its storage by itself and keeps going"]],
@@ -3292,7 +3368,7 @@ $("#wakeBtn").onclick = () => setWake(!wantWake);
 $("#q").addEventListener("input", e => { st.q = e.target.value.trim(); renderList(); });
 document.querySelectorAll(".bar").forEach(b => b.addEventListener("click", e => {
   const d = decks[+b.dataset.deck]; if (!d.track || mix || d !== A()) return;
-  const r = b.getBoundingClientRect(); d.el.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * (d.el.duration || 0); d.plan = null; prep = null;
+  const r = b.getBoundingClientRect(); d.el.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * (d.el.duration || 0); d.plan = null; // the next song stays loaded
 }));
 document.addEventListener("click", e => {
   const v = e.target.closest("[data-view]"); if (v) { st.view = v.dataset.view; lsSet("cb.view", st.view); renderAll(); $("#content").scrollTop = 0; return; }
@@ -3381,7 +3457,7 @@ $("#miniBtn").onclick = () => setMini(!$("#app").classList.contains("mini"));
 function updateMini() {
   if ($("#miniview").hidden) return;
   const d = A(), t = d.track, el = bgMode ? bgEl : d.el;
-  $("#miniTitle").textContent = t ? nm(t.title) : "Nothing playing";
+  $("#miniTitle").textContent = t ? nm(t.title) : "Nothing playing"; $("#miniTitle").classList.toggle("inst", !!(t && t.isInst));
   $("#miniSub").textContent = t ? [t.artist, t.bpm ? t.bpm.toFixed(0) + " BPM" : "", t.key ? `${t.key} ${keyName(t.key)}` : ""].filter(Boolean).join(" · ") : "Pick a song or press play.";
   $("#miniBar").style.width = t && el.duration ? (el.currentTime / el.duration * 100) + "%" : "0";
 }
@@ -3488,6 +3564,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) kick
   if (st.view !== "library" && !curPl()) st.view = "library";
   try { renderAll(); } catch (e) { st.view = "library"; st.q = ""; try { renderAll(); } catch (e2) { $("#content").innerHTML = `<div class="empty"><h2>My DJ Library</h2><p>Something went wrong showing your songs (${esc(e2.message)}). Your songs are safe; reload the page.</p></div>`; } }
   updateDecks(); applyVol();
+  setTimeout(() => markOldInstrumentals().catch(() => {}), 2500);
   // songs an earlier build tagged "clean" without really checking them count as unchecked again
   for (const t of st.tracks.values()) if (t.apex && Array.isArray(t.explicit) && !t.explicit.length && !t.cleanChecked && !/\b(clean|radio edit|instrumental)\b/i.test(t.title + " " + (t.fileName || ""))) { delete t.explicit; dbPut("tracks", t).catch(() => {}); }
   // convert songs saved by older versions (Blob) to the reliable format, one at a time, while the app is open
