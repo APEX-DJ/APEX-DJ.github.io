@@ -1164,7 +1164,9 @@ class BufferPlayer {
     this.seg = [{ t: when, pos: this._pos, rate: this._rate }]; this.node = n;
     n.onended = () => { if (this.node !== n) return; this._pos = this.duration; this.node = null; this.seg = []; this._paused = true; this.emit("ended"); };
   }
-  _stop() { const n = this.node; if (!n) return; this.node = null; this.seg = []; n.onended = null; try { n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }
+  // stop, then unplug only once the audio engine says it has finished: unplugging a player that's still running left it (and its
+  // whole song, ~150 MB) in memory for good, one more song after every mix, until the phone closed the app
+  _stop() { const n = this.node; if (!n) return; this.node = null; this.seg = []; n.onended = () => { try { n.disconnect(); } catch (e) {} }; try { n.stop(); } catch (e) { try { n.disconnect(); } catch (e2) {} } }
 }
 let actx = null, master = null, volNode = null, recDest = null, meter = null, bus = null, verb = null, dropGain = null, noiseBuf = null;
 const decks = [0, 1].map(i => {
@@ -2098,6 +2100,11 @@ async function playDrop(beat, hitAt, startAt) {
 async function togglePlay() {
   if (bgMode) { if (bgEl.paused) { await bgEl.play().catch(() => {}); st.playing = true; } else { bgEl.pause(); st.playing = false; } renderTransport(); mediaMeta(); return; }
   ensureCtx();
+  if (!A().track && st.queue.length && st.qi >= 0) { // reopened: pick up the same song where it was
+    const at = st.resumeAt || 0; st.resumeAt = 0; await hardPlay(st.qi);
+    try { if (at > 10 && A().el.duration && at < A().el.duration - 30) A().el.currentTime = at; } catch (e) {}
+    return;
+  }
   if (!A().track) { const ids = viewTracks().map(t => t.id); if (ids.length) { setQueue(ids); hardPlay(0); } else toast("Add some music first."); return; }
   if (st.playing) {
     st.resume = decks.filter(d => d.track && !d.el.paused); st.resume.forEach(d => d.el.pause());
@@ -2115,7 +2122,21 @@ async function togglePlay() {
   }
   renderTransport();
 }
-function skipNext() { if (st.nextI != null) hardPlay(st.nextI); else toast("That was the last song in the list."); }
+function skipNext() {
+  if (st.nextI != null) return hardPlay(st.nextI);
+  // nothing lined up (the list ended, or the app was reopened): carry on with the songs on screen after the one that was playing
+  const ids = viewTracks().filter(t => !t.bad).map(t => t.id); if (!ids.length) return toast("Add some music first.");
+  const cur = A().track && A().track.id; setQueue(ids); const i = cur ? st.queue.indexOf(cur) : -1;
+  hardPlay(i >= 0 && i + 1 < st.queue.length ? i + 1 : 0);
+}
+function saveQueue() { try { lsSet("cb.queue", st.queue.length ? { ids: st.queue, qi: st.qi, src: st.queueSource, pos: A().track ? Math.round(A().el.currentTime || 0) : 0 } : null); } catch (e) {} }
+function restoreQueue() { // after a restart: the same list, ready to continue where it was
+  const q = lsGet("cb.queue"); if (!q || !Array.isArray(q.ids) || st.queue.length) return;
+  const ids = q.ids.filter(id => st.tracks.has(id)); if (!ids.length) return;
+  const cur = q.ids[q.qi]; st.queue = ids; st.qi = Math.max(-1, ids.indexOf(cur)); st.queueSource = q.src || null; st.resumeAt = q.pos || 0; st.forcedNext = false;
+  try { computeNext(); } catch (e) {}
+}
+setInterval(() => { if (st.playing) saveQueue(); }, 5000);
 function skipPrev() {
   const d = A();
   if (d.track && d.el.currentTime > 5) { d.el.currentTime = startPoint(d.track, d); return; }
@@ -2226,7 +2247,13 @@ function computeNextInner() {
 }
 
 /* ---------- import ---------- */
-function decode(buf) { return new Promise((res, rej) => { const p = actx.decodeAudioData(buf, res, rej); if (p && p.catch) p.catch(rej); }); }
+let decodeCtx = null;
+function decode(buf) { // songs unpack at CD rate (44.1 kHz): no extra full-size copy while loading, and 8% smaller than at the phone's 48 kHz
+  return new Promise((res, rej) => {
+    let c = actx; try { decodeCtx = decodeCtx || new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 1, 44100); c = decodeCtx; } catch (e) {}
+    const p = c.decodeAudioData(buf, res, rej); if (p && p.catch) p.catch(rej);
+  });
+}
 function probeDuration(blob) {
   return new Promise(res => { const a = new Audio(), u = URL.createObjectURL(blob); a.preload = "metadata";
     a.onloadedmetadata = () => { res(isFinite(a.duration) ? a.duration : null); URL.revokeObjectURL(u); };
@@ -2959,16 +2986,14 @@ function addToPlaylist(id) {
     s.querySelector("#np2").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#np2name").value.trim(); if (!n) return; const p = await createPlaylist(n, [id]); closeSheet(); renderAll(); toast(`Added to ${p.name}.`); });
   });
 }
-async function markOldInstrumentals() { // instrumentals added before 6.89 went in as songs: find them by their Mac tag and file them
-  const cand = [...st.tracks.values()].filter(t => !t.isInst && !t.instChecked && /\(instrumental\)/i.test(t.title + " " + (t.fileName || "")));
+async function markOldInstrumentals() { // instrumentals added before 6.89 went in as songs: file them by name (never loads any audio)
+  const songs = new Map(); for (const t of st.tracks.values()) if (!t.isInst && t.fileName && !/\(instrumental\)\.\w+$/i.test(t.fileName)) songs.set(t.fileName.replace(/\.\w+$/, "").toLowerCase(), t);
   const found = [];
-  for (const t of cand) {
-    try {
-      const b = await audioBlob(t.id); if (!b) continue;
-      const tags = readID3(await b.slice(0, 1 << 20).arrayBuffer());
-      if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} Object.assign(t, { isInst: true, instOf: ii.of || "", explicit: [], cleanChecked: 1 }); found.push(t); }
-      t.instChecked = 1; await dbPut("tracks", t);
-    } catch (e) {}
+  for (const t of st.tracks.values()) {
+    if (t.isInst || !t.fileName || !/ \(instrumental\)\.\w+$/i.test(t.fileName)) continue;
+    const base = t.fileName.replace(/ \(instrumental\)\.\w+$/i, ""), o = songs.get(base.toLowerCase());
+    Object.assign(t, { isInst: true, instOf: o ? o.fileName : base + ".mp3", explicit: [], cleanChecked: 1 }); found.push(t);
+    dbPut("tracks", t).catch(() => {});
   }
   if (!found.length) return;
   const ip = st.playlists.find(p => p.name === INST_FOLDER) || await createPlaylist(INST_FOLDER, []);
@@ -3177,8 +3202,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.89";
+const APP_VERSION = "6.90";
 const CHANGELOG = [
+  ["6.90", "October 5, 2026", ["Fixed: the app could close by itself at startup (\"A problem repeatedly occurred\") when instrumentals had been added as songs: they're now sorted by name without loading any audio", "If the app ever does close while starting, the next start skips background clean-up so it can't happen twice in a row", "After a restart your play list is still there: Play continues the same song where it was, and Next keeps going instead of saying the list ended", "Songs load with less memory (unpacked at CD rate, no extra copy), so long mixing sessions on iPhone stay well within its limits"]],
   ["6.89", "October 5, 2026", ["Fixed: tapping ahead on the song bar to test a mix could close the app on iPhone (the next song was being loaded twice at once); each song now loads once, and the old song's memory is freed after every mix", "Main Instrumentals: the Mac's instrumentals get their own orange folder and stay out of My DJ Library", "Instrumental only now plays a song's real instrumental when you have it (spotless), and takes the vocals out of the rest", "Phones: song titles get much more room and bigger, brighter text"]],
   ["6.88", "October 5, 2026", ["Ready for its own web address (apex-dj.github.io): opens full screen from the Home Screen, with no Claude bar, and opens with no signal", "Your DJ drops stay private: add them once from iCloud Drive › Apex Studios DJ App › DJ Drops and they're kept on this device only", "Save to my device works for recordings everywhere (the iPhone share sheet: Save to Files)"]],
   ["6.87", "October 5, 2026", ["Song titles get the room on phones: BPM and key sit together on the right, and long titles wrap to two lines", "Instrumental only: a switch right next to Auto mix plays every song and mix without vocals", "Clean mode only trusts songs your Mac has really checked; until then they play without vocals. Clean always takes out the full word list (damn, shit, hell, crap, the f-, b- and n-words and their slang spellings) — no settings to remember", "Choose the mix match (96, 92, 88, 84 or 80%) and whether songs below it play after or are skipped; in Mix order each song shows how it comes in: mix %, tempo ride, power cut or skipped"]],
@@ -3546,6 +3572,9 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) kick
 
 /* ---------- start ---------- */
 (async function boot() {
+  const lastBoot = lsGet("cb.boot"), safe = !!(lastBoot && Date.now() - lastBoot < 5 * 60e3); // the last start never finished
+  lsSet("cb.boot", Date.now()); setTimeout(() => lsSet("cb.boot", null), 45000);
+  const closedNormally = () => lsSet("cb.boot", null); addEventListener("pagehide", closedNormally); document.addEventListener("visibilitychange", () => { if (document.hidden) closedNormally(); });
   const opening = openDB().then(d => ({ d }), e => ({ e }));
   let got = await Promise.race([opening, new Promise(r => setTimeout(() => r({ wait: true }), 3000))]);
   if (got.wait) { st.dbNote = "blocked"; try { renderAll(); } catch (e) {} got = await opening; }
@@ -3564,6 +3593,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) kick
   if (st.view !== "library" && !curPl()) st.view = "library";
   try { renderAll(); } catch (e) { st.view = "library"; st.q = ""; try { renderAll(); } catch (e2) { $("#content").innerHTML = `<div class="empty"><h2>My DJ Library</h2><p>Something went wrong showing your songs (${esc(e2.message)}). Your songs are safe; reload the page.</p></div>`; } }
   updateDecks(); applyVol();
+  restoreQueue();
+  if (safe) { setTimeout(() => toast("The app restarted after a problem. Your songs are safe; background clean-up is paused this time.", 7000), 1500); return; }
   setTimeout(() => markOldInstrumentals().catch(() => {}), 2500);
   // songs an earlier build tagged "clean" without really checking them count as unchecked again
   for (const t of st.tracks.values()) if (t.apex && Array.isArray(t.explicit) && !t.explicit.length && !t.cleanChecked && !/\b(clean|radio edit|instrumental)\b/i.test(t.title + " " + (t.fileName || ""))) { delete t.explicit; dbPut("tracks", t).catch(() => {}); }
