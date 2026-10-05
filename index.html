@@ -533,6 +533,9 @@ html,body{max-width:100%;overflow-x:hidden}
 .minibar button[aria-pressed="true"]{background:linear-gradient(90deg,var(--cyan),var(--violet));color:#0b0d18;border-color:transparent}
 .minibar .mplay{background:linear-gradient(90deg,var(--red),var(--gold));color:#1a0d00;border-color:transparent}
 .minibar .mtop{border-color:var(--gold);color:var(--gold)}
+.checks{display:grid;gap:4px;margin:6px 0 12px}
+.ck{display:grid;grid-template-columns:110px 1fr;gap:8px;font-size:13px;padding:6px 10px;border-radius:10px;background:var(--panel2)}
+.ck.ok b{color:var(--green)} .ck.warn b{color:var(--gold)} .ck span{color:var(--muted)}
 .fixbar .bad-names{display:block;margin-top:4px;font-weight:700;color:var(--fg)}
 /* the Mac's instrumentals: orange everywhere, filed in their own Main Instrumentals folder */
 .row.inst{box-shadow:inset 3px 0 0 var(--orange)}
@@ -1233,6 +1236,11 @@ function ensureCtx() {
     d.norm.connect(sp); sp.connect(mL, 0); sp.connect(mR, 1); sp.connect(sL, 0); sp.connect(sR, 1);
     mL.connect(mid); mR.connect(mid); sL.connect(side); sR.connect(side);
     mid.connect(mLow); mid.connect(mTop);
+    // the vocal echo: the centre voice band through a delay set to the beat, so a singer's last words echo out in time
+    d.vsend = actx.createGain(); d.vsend.gain.value = 0; d.vdelay = actx.createDelay(4); d.vdelay.delayTime.value = 0.375;
+    d.vfb = actx.createGain(); d.vfb.gain.value = 0.45; d.vwet = actx.createGain(); d.vwet.gain.value = 0.9;
+    const vhp = biq("highpass", 300, 0.7), vlp = biq("lowpass", 4500, 0.7), vfl = biq("lowpass", 3200, 0.7);
+    mid.connect(vhp); vhp.connect(vlp); vlp.connect(d.vsend); d.vsend.connect(d.vdelay); d.vdelay.connect(vfl); vfl.connect(d.vfb); d.vfb.connect(d.vdelay); d.vdelay.connect(d.vwet); d.vwet.connect(bus);
     for (const n of [mLow, mTop]) { n.connect(mg, 0, 0); n.connect(mg, 0, 1); }
     side.connect(mg, 0, 0); side.connect(inv); inv.connect(mg, 0, 1);
     mg.connect(mk); mk.connect(d.kar);
@@ -1604,6 +1612,46 @@ function lowDb(buf, p0, p1) { // bass + kick energy (below 150 Hz) of a section
   return n ? 10 * Math.log10(s2 / n + 1e-12) : -120;
 }
 const lift = (buf, p0, p1) => Math.pow(10, clamp(bodyDb(buf) - regionDb(buf, p0, p1), 0, 6) / 20); // up to +6 dB for a quiet section
+/* WHO IS SINGING, AND WHEN: the Mac's vocal map (each song compared with its own instrumental, line by line), else its
+   phrase map; null when nobody knows (a song added from elsewhere). Instrumentals never sing. */
+function singsAt(t, pos) {
+  if (!t) return null; if (t.isInst) return false;
+  const vs = t.vs;
+  if (Array.isArray(vs)) { let lo = 0, hi = vs.length - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (pos < vs[m][0]) hi = m - 1; else if (pos > vs[m][1]) lo = m + 1; else return true; } return false; }
+  if (t.apex && Array.isArray(t.apex.ph)) { const p = t.apex.ph.find(x => pos >= x[0] && pos < x[1]); return p ? p[2] >= 0.3 : false; }
+  return null;
+}
+function singFrac(t, a, b) { let n = 0, k = 0; for (let p = a; p < b; p += 0.1) { const v = singsAt(t, p); if (v == null) return null; n++; if (v) k++; } return n ? k / n : 0; }
+/* THE VOCAL PLAN for a mix: two voices never talk over each other. The old song's voice ends on a finished line and echoes
+   out in time; the new song's words come in only after that (its instrumental bridges the gap); a hook only sings where
+   neither song does. Steps are half-beats from the cut-in (negative = the loop leg). */
+function planVocals(o) {
+  const H = 2, n0 = Math.round(o.startBeat * H), n1 = o.total * H, gap = 2 * H;
+  const sa = h => singsAt(o.ft, o.aPos(h / H) + 0.08), sb = h => singsAt(o.nt, o.bPos(h / H) + 0.08);
+  const aKnown = sa(0) != null, bKnown = sb(0) != null;
+  let hB = null; if (bKnown) for (let h = 0; h < n1 - 1; h++) if (sb(h) && sb(h + 1)) { hB = h; break; }
+  const res = { aOut: 0, echo: false, bHold: null, hB, aKnown, bKnown, H, gap, sb };
+  if (!aKnown) { // nobody knows when the old song sings: its voice echoes out at the cut-in and the new words wait a bar
+    res.aOut = 0; res.echo = true; if (!bKnown || (hB != null && hB < 4 * H)) res.bHold = [0, 4 * H]; return res;
+  }
+  const limit = Math.max(n0, hB != null ? hB - gap : o.swapBeat * H);   // the old voice is gone (echoed away) by here
+  if (!sa(limit)) {      // silent there: end on its last finished line (echo), or just before its next line would start
+    let e = null; for (let h = limit; h > n0; h--) if (sa(h - 1) && !sa(h)) { e = h; break; }
+    res.aOut = e != null ? e : limit; res.echo = e != null;
+  } else {
+    let e0 = null, r0 = null; for (let h = limit; h > n0; h--) { if (r0 == null && !sa(h - 1) && sa(h)) r0 = h; if (sa(h - 1) && !sa(h)) { e0 = h; break; } }
+    if (e0 != null) { res.aOut = e0; res.echo = true; }            // its previous line ended in time: echo out there, the next line never starts
+    else if (r0 != null) { res.aOut = r0; res.echo = false; }      // this line started inside the mix: take the voice out just before it
+    else {                                                         // it sang the whole way: finish this line, the new words wait for their next line
+      let e1 = null; for (let h = limit; h < n1; h++) if (!sa(h)) { e1 = h; break; }
+      res.aOut = e1 != null ? e1 : Math.max(0, o.swapBeat * H - gap); res.echo = true;
+      if (bKnown) { let rel = null; for (let h = res.aOut + gap; h < n1 - 1; h++) if (!sb(h - 1) && sb(h) && sb(h + 1)) { rel = h; break; } res.bHold = [0, rel != null ? rel : n1]; }
+      else res.bHold = [0, res.aOut + gap];
+    }
+  }
+  if (!bKnown && !res.bHold) res.bHold = [0, Math.max(4 * H, res.aOut + gap)];
+  return res;
+}
 /* how much of a section is singing: centre voice band (300 Hz-3.4 kHz) above the sides, 0..1 */
 function vocalness(buf, p0, p1) {
   const sr = buf.sampleRate, c0 = buf.getChannelData(0), c1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : c0;
@@ -1665,7 +1713,7 @@ async function startProMix() {
   while (tM != null && tM < now + 0.15 && M + 8 * pA < endPoint(from)) { M += 4 * pA; tM = from.el.timeOf(M); }
   if (tM == null || tM < now + 0.15) { mix = null; return startMix(); }
   // the loop leg uses the punchiest, most word-free slice of the phrase leading up to the mix point
-  { const sl = slice * pA, score = c => regionDb(from.el.buf, c, c + sl) - 14 * vocalness(from.el.buf, c, c + sl);
+  { const sl = slice * pA, score = c => { const sf = singFrac(ft, c, c + sl); return regionDb(from.el.buf, c, c + sl) - (sf != null ? 30 * sf : 14 * vocalness(from.el.buf, c, c + sl)); };
     let best = M, bs = score(M);
     for (let k = 1; k <= 32 / slice; k++) { const c = M - k * sl, tc = from.el.timeOf(c); if (tc == null || tc < now + 0.3) break; const v = score(c); if (v > bs + 1.5) { best = c; bs = v; } }
     if (best !== M) { M = best; tM = from.el.timeOf(M); } }
@@ -1772,8 +1820,34 @@ async function startProMix() {
     auto(to.low.gain, [[tCut, -6, "set"], [tMash - 0.03, -6, "set"], [tMash + 0.03, -24, "lin"], [tSwap - 0.03, -24, "set"], [tSwap + 0.03, 0, "lin"]]);
     auto(from.low.gain, bassReady ? [[tSwap - 0.03, 0, "set"], [tSwap + 0.03, -30, "lin"]] : [[tSwap, 0, "set"], [tSwap + 16 * P, -6, "lin"], [tEnd, -30, "lin"]]);
     auto(from.high.gain, [[tSwap, 0, "set"], [tEnd, -6, "lin"]]);
-    const bVoxAt = vocIn != null ? tCut + (vocIn - bStart) / rB : Infinity;  // the old song's vocals step out when the new words arrive
-    karAt = Math.max(tCut, Math.min(tMash, bVoxAt) - P);
+  }
+  // THE VOCAL PLAN: the old voice ends on a finished line and echoes out on the beat; the new words come in after it;
+  // a hook only sings in a gap where neither song does (see planVocals)
+  const totalB = L1 + MIX_MASH + MIX_LINGER, swapB = L1 + MIX_MASH;
+  let vp = null, hookPlan = null, bHoldT = null, bVoiceT = null;
+  if (mode !== "cut") {
+    vp = planVocals({ ft, nt, aPos: b => b < 0 ? M + ((b + loopLen) % slice) * pA : wrapA(aCut + b * pA), bPos: b => bStart + b * pB, startBeat: -loopLen, total: totalB, swapBeat: swapB });
+    const H = vp.H, tOf = h => h >= 0 ? tCut + (h / H) * P : tCut + (h / H) * beatLoop;
+    // the mashup hook: a full sentence from another song, in the gap (or with the new words held a little longer for it)
+    if (S.useHooks !== false && (mixCount + 1) % 3 !== 2) {
+      const hk = hookFor(nt, ft, Nb);
+      if (hk) {
+        const hb = 60 / hk.h.hook.bpm, need = Math.ceil((hookEnd(hk) - (hk.h.hook.lead || 0)) / hb) + 3;
+        const start = Math.max(4, Math.ceil(Math.ceil((vp.aOut + vp.gap) / H) / 4) * 4), bVoice = vp.bHold ? vp.bHold[1] / H : vp.hB != null ? vp.hB / H : totalB;
+        if (start + need <= bVoice - 1 && start + need <= totalB - 4) hookPlan = { hk, startBeat: start };
+        else if (vp.bKnown && start + need <= swapB + 8) {
+          let rel = null; for (let h = (start + need) * H; h < totalB * H - 1; h++) if (!vp.sb(h - 1) && vp.sb(h) && vp.sb(h + 1)) { rel = h; break; }
+          if (rel != null && rel / H <= swapB + 8) { vp.bHold = [0, rel]; hookPlan = { hk, startBeat: start }; }
+        }
+      }
+    }
+    karAt = tOf(vp.aOut);
+    if (vp.bHold) { bHoldT = [tCut - 0.05, tOf(vp.bHold[1])]; bVoiceT = bHoldT[1]; } else if (vp.hB != null) bVoiceT = tOf(vp.hB);
+    if (vp.echo) { // the old singer's last words echo away in time: a dotted-eighth delay, caught over the final beat
+      setParam(from.vdelay.delayTime, Math.min(3.9, 0.75 * P)); setParam(from.vwet.gain, 0.9);
+      auto(from.vsend.gain, [[karAt - P, 0, "set"], [karAt - 0.5 * P, 1, "lin"], [karAt + 0.06, 1, "set"], [karAt + 0.18, 0, "lin"]]);
+      if (bVoiceT != null && bVoiceT < karAt + 4 * P) auto(from.vwet.gain, [[bVoiceT - 0.25 * P, 0.9, "set"], [bVoiceT + 0.25 * P, 0.0001, "lin"], [bVoiceT + 8 * P, 0.9, "set"]]);
+    }
   }
   // LEVEL RIDER: work out the combined loudness beat by beat from both songs' audio (with every fader and bass cut
   // above) and lift any beat that would fall below the playing song's normal level, up to +9 dB, smoothly
@@ -1789,7 +1863,8 @@ async function startProMix() {
       const PA = ga * ga * nA * nA * (kar ? pa.karRest + pa.karLow * lfA : pa.full - pa.low + pa.low * lfA);
       let PB = 0;
       if (jb >= 0) { const bPos = bStart + jb * P * rBx, pb = bandPow(to.el.buf, bPos, bPos + pB), gb = jb < sw - 8 ? gB : jb < sw ? gB + (gS - gB) * (jb - sw + 8) / 8 : jb < sw + 16 ? gS : gS + (1 - gS) * (jb - sw - 16) / (MIX_LINGER - 16);
-        const bLowDb = jb < L1 ? -6 : jb < sw ? -24 : 0; PB = gb * gb * nB * nB * (pb.full - pb.low + pb.low * Math.pow(10, bLowDb / 10)) + (layer && jb < layer.beats ? gb * gb * nB * nB * pb.low * 0.5 : 0); }
+        const bLowDb = jb < L1 ? -6 : jb < sw ? -24 : 0, held = bHoldT && tj >= bHoldT[0] && tj < bHoldT[1], lfB = Math.pow(10, bLowDb / 10);
+        PB = gb * gb * nB * nB * (held ? pb.karRest + pb.karLow * lfB : pb.full - pb.low + pb.low * lfB) + (layer && jb < layer.beats ? gb * gb * nB * nB * pb.low * 0.5 : 0); }
       const lvl2 = 10 * Math.log10(PA + PB + 1e-12); pts.push([tj, clamp(target - 1 - lvl2, 0, 9)]);
     }
     for (let k = 1; k < pts.length - 1; k++) pts[k][2] = (pts[k - 1][1] + pts[k][1] + pts[k + 1][1]) / 3;   // smooth over 3 beats
@@ -1798,25 +1873,47 @@ async function startProMix() {
     ride.push([tEnd + 2 * P, 1, "lin"]); auto(bus.gain, ride);
     riderMax = Math.max(...pts.map(x => x[2] ?? x[1])); }
   Object.assign(mix, { pending: false, pro: true, mode, t0: tM, points, riderMax: +riderMax.toFixed(1), cutAt: tCut, mashAt: tMash, swapAt: tSwap, end: tEnd, dur: tEnd - tM, rate: rBx, N0, N: Nb, NB, drift,
-    synced: false, nextP: null, curP: pA, style: "beatmix", flavor: "none", score: mixScore(ft, nt, rA0).pct, karAt, beatSec: P, M, bStart, rA: rateA(N), loopLen, slice,
+    synced: false, nextP: null, curP: pA, style: "beatmix", flavor: "none", score: mixScore(ft, nt, rA0).pct, karAt, bHold: bHoldT, beatSec: P, M, bStart, rA: rateA(N), loopLen, slice,
     pA, pB, lockA: !!la, lockB: !!lb, lag: Math.round(lag * 1000), lagQ, layer, nudges: nudges.map(x => Math.round(x[1] * 1000)), layerBeats: layer ? layer.beats : 0, gA: +gA.toFixed(2), gB: +gB.toFixed(2), vocIn });
   lastMixInfo = { at: Date.now(), from: ft.title, to: nt.title, mode, N0, N: Nb, lag: Math.round(lag * 1000), lagQ, drift, points, riderMax: +riderMax.toFixed(1), layer: !!layer, nudges: nudges.length, lockA: !!la, lockB: !!lb, gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
   // the loop leg's move: a DJ drop when one is due, otherwise scratches, a beat roll or a word tease (rotating)
   const dropDue = S.dropEvery > 0 && ++mixCount % S.dropEvery === 0, moves = [];
   if (dropDue) { playDrop(beatLoop, tCut); moves.push("DJ drop"); }
   else {
-    const pick = mode === "cut" ? "roll" : ["scratch", "roll", "scratch", "tease"][mixCount % 4];
-    if (pick === "scratch") { scratchFx(to.el.buf, vocIn != null ? vocIn : bStart, pB, rBx, tCut, beatLoop, 0.9 * normGain(nt)); moves.push("scratch"); }
+    const riff = mode === "beat" ? riffSpot(to.el.buf, nt, bStart, pB) : null, wordOk = vocIn != null && singsAt(nt, vocIn) !== false;
+    const pick = nextMove(mode, wordOk, riff != null), gN = normGain(nt);
+    if (pick === "riff") { musicTease(to.el.buf, riff, rBx, tCut, beatLoop, gN); moves.push("music hook from the new song (filter rise)"); }
+    else if (pick === "stabs") { keysStab(to.el.buf, riff, pB, rBx, tCut, beatLoop, gN); moves.push("keyboard stabs from the new song"); }
+    else if (pick === "swell") { reverseSwell(to.el.buf, bStart, pB, rBx, tCut, beatLoop, gN); moves.push("reverse swell into the drop"); }
+    else if (pick === "tease") { wordTease(to.el.buf, vocIn, pB, rB, tCut, beatLoop, nt); moves.push("word tease"); }
+    else if (pick === "scratch") { scratchFx(to.el.buf, riff != null ? riff : bStart, pB, rBx, tCut, beatLoop, 0.9 * gN); moves.push("scratch"); }
     else if (pick === "roll") { rollFx(from, M, pA, rateA(tempos[bars - 1]), tCut, beatLoop, gL * normGain(ft)); moves.push("beat roll"); }
-    else if (vocIn != null) { wordTease(to.el.buf, vocIn, pB, rB, tCut, beatLoop, nt); moves.push("word tease"); }
+    else moves.push("clean blend");
   }
-  // the mashup move: a vocal hook from another song, key-matched and locked to the tempo, over the lock-in
-  if (mode !== "cut" && S.useHooks !== false && mixCount % 3 !== 2) { const hk = hookFor(nt, ft, Nb); if (hk) { hookFx(hk, tCut + 8 * P, Nb, Math.min(L1 - 8, 16)); moves.push("hook: " + hk.h.hook.from); } }
+  // the mashup: a hook from another song (a full sentence, key-matched, tempo-locked) only where nobody else sings, then an echo
+  if (hookPlan) { const hp = hookFx(hookPlan.hk, tCut + hookPlan.startBeat * P, Nb); moves.push(`hook “${hookPlan.hk.h.hook.from}” at beat ${hookPlan.startBeat}, echo at ${Math.round((hp.end - tCut) / P)}`); }
+  else nextHook = null;
+  // THE PRO CHECKLIST for this transition
+  const kc = compat(ft.key, nt.key), checks = [];
+  checks.push(["Tempo", true, `both locked at ${Nb} BPM, a whole number`]);
+  checks.push(["Beats", mode === "cut" || points >= 3, mode === "cut" ? "power cut right on the beat" : `kicks and hi-hats lined up, measured at ${points} points`]);
+  checks.push(["Bars", mode === "cut" || !!la, rr && rr.k ? `bars lined up (new song moved ${rr.k} beat${Math.abs(rr.k) === 1 ? "" : "s"})` : "bars lined up, mix starts on a phrase"]);
+  checks.push(["Key", ["perfect", "good", "ok"].includes(kc.level), `${ft.key || "?"} → ${nt.key || "?"} (${kc.level === "perfect" ? "same key" : kc.level === "good" ? "neighbour keys" : kc.level === "ok" ? "energy shift" : kc.level === "clash" ? "keys don't match well: the voices never overlap" : "key unknown"})`]);
+  if (vp) {
+    const bv = bVoiceT != null ? Math.round((bVoiceT - tCut) / P) : null, ao = Math.round((karAt - tCut) / P);
+    checks.push(["Vocals", vp.aKnown && vp.bKnown, !vp.aKnown ? "old song's vocals unknown: its voice echoes out at the cut-in, new words wait a bar"
+      : `${vp.echo ? `old voice finishes its line and echoes out at beat ${ao}` : `old voice already done (out at beat ${ao})`}${bv != null ? `; new voice from beat ${bv}${vp.bHold ? " (held for its next line)" : ""}` : "; new song doesn't sing in the mix"} — never two at once`]);
+  } else checks.push(["Vocals", true, "power cut: one song at a time"]);
+  checks.push(["Bass", true, mode === "cut" ? "one bassline at a time" : `one bassline at a time: they swap at beat ${swapB}`]);
+  checks.push(["Levels", riderMax <= 9, riderMax > 0.5 ? `quiet spots lifted up to ${riderMax.toFixed(1)} dB, no dips` : "even level, no dips"]);
+  checks.push(["Intro", true, moves[0] || "clean blend"]);
+  checks.push(["Hook", true, hookPlan ? "full sentence in a gap where nobody sings, then echoes out" : "none this time (no clear gap, or not this mix)"]);
+  checks.push(["Exit", true, mode === "cut" ? "old song echoes out" : "old song rides under the new one for 32 beats, then out"]);
   // the swap lands with an impact hit: it marks the drop and fills the instant the basslines trade
   if (mode !== "cut") loadSfx("impact").then(ib => { if (!ib || !mix || mix.to !== to) return; const s0 = actx.createBufferSource(), g0 = actx.createGain(); s0.buffer = ib; g0.gain.value = 0.6;
     s0.connect(g0); g0.connect(bus); s0.start(Math.max(actx.currentTime, tSwap - peakTime(ib))); }).catch(() => {});
   Object.assign(mix, { moves, rhythmK: rr ? rr.k : 0, rhythm: rr ? Math.round(rr.score * 100) : null });
-  lastMixInfo.moves = moves; lastMixInfo.rhythmK = rr ? rr.k : 0; lastMixInfo.rhythm = rr ? Math.round(rr.score * 100) : null;
+  lastMixInfo.moves = moves; lastMixInfo.checks = checks; lastMixInfo.rhythmK = rr ? rr.k : 0; lastMixInfo.rhythm = rr ? Math.round(rr.score * 100) : null;
   renderPlayerText(); renderTransport();
 }
 let lastMixInfo = null;
@@ -1877,7 +1974,7 @@ function rollFx(from, slice0, pA, rate, tCut, P, gain) {
 /* VOCAL HOOKS (mashups): acapella hooks from other songs, made on the Mac (APEX_HOOK files) */
 let nextHook = null; const hookBufs = new Map(), hooksUsed = [];
 function pickHook(nt, ft, N) {
-  const ok = [...st.hooks.values()].filter(h => h.hook && h.hook.bpm && Math.abs(N / h.hook.bpm - 1) <= 0.08 && h.hook.from !== nt.title && (!ft || h.hook.from !== ft.title));
+  const ok = [...st.hooks.values()].filter(h => h.hook && h.hook.bpm && Math.abs(N / h.hook.bpm - 1) <= 0.08 && h.hook.from !== nt.title && (!ft || h.hook.from !== ft.title) && !(S.clean && h.hook.x));
   const rank = h => { const c = compat(nt.key, h.hook.key).level; return ({ perfect: 0, good: 1, ok: 3, clash: 9, unknown: 4 })[c] + Math.abs(N / h.hook.bpm - 1) * 40 + (hooksUsed.includes(h.id) ? 6 : 0) + Math.random(); };
   return ok.filter(h => ["perfect", "good", "ok"].includes(compat(nt.key, h.hook.key).level)).sort((a, b) => rank(a) - rank(b))[0] || null;
 }
@@ -1887,11 +1984,28 @@ async function preloadHook(nt, ft) {
   try { let buf = hookBufs.get(h.id); if (!buf) { const hb = await audioBlob(h.id); buf = await decode(await hb.arrayBuffer()); hookBufs.set(h.id, buf); } nextHook = { for: nt.id, h, buf }; } catch (e) {}
 }
 function hookFor(nt, ft, N) { return nextHook && nextHook.for === nt.id && Math.abs(N / nextHook.h.hook.bpm - 1) <= 0.08 ? nextHook : null; }
-function hookFx(hk, when, N, beats) {
-  const s = actx.createBufferSource(), g = actx.createGain(), hp = biq("highpass", 140, 0.7); s.buffer = hk.buf; s.playbackRate.value = N / hk.h.hook.bpm;
-  const dur = beats * 60 / N; g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(0.95, when + 0.01); g.gain.setValueAtTime(0.95, when + dur - 0.3); g.gain.linearRampToValueAtTime(0, when + dur);
-  s.connect(hp); hp.connect(g); g.connect(bus); s.start(when, 0); s.stop(when + dur + 0.05);
+/* where a hook's sentence has finished, in seconds into the hook file: the Mac marks it on new hooks (APEX_HOOK v2);
+   older hooks: the last breath after at least 6 beats of singing */
+function hookEnd(hk) {
+  const h = hk.h.hook; if (h.v >= 2 && h.end) return h.end;
+  if (hk.endAt != null) return hk.endAt;
+  const b = hk.buf, d = b.getChannelData(0), sr = b.sampleRate, w = Math.floor(0.05 * sr), beat = 60 / h.bpm, rms = [];
+  for (let i = 0; i + w <= d.length; i += w) { let s2 = 0; for (let j = i; j < i + w; j++) s2 += d[j] * d[j]; rms.push(Math.sqrt(s2 / w)); }
+  const pk = Math.max(...rms, 1e-6), quiet = rms.map(v => v < pk * 0.06); let end = b.duration;
+  for (let k = rms.length - 6; k > 0; k--) { if (k * 0.05 < 6 * beat) break; if (!quiet[k - 1] && quiet[k] && quiet[k + 1] && quiet[k + 2] && quiet[k + 3] && quiet[k + 4]) { end = k * 0.05 + 0.08; break; } }
+  return (hk.endAt = end);
+}
+function hookFx(hk, when, N) {
+  const h = hk.h.hook, rate = N / h.bpm, P = 60 / N, t0 = when - (h.lead || 0) / rate, tLast = t0 + hookEnd(hk) / rate;   // a pickup word starts before the bar
+  const s = actx.createBufferSource(), g = actx.createGain(), hp = biq("highpass", 140, 0.7), send = actx.createGain(), dl = actx.createDelay(4), fb = actx.createGain(), fl = biq("lowpass", 3500, 0.7), wet = actx.createGain();
+  dl.delayTime.value = Math.min(3.9, 0.75 * P); fb.gain.value = 0.5; wet.gain.value = 0.8;
+  s.buffer = hk.buf; s.playbackRate.value = rate; s.connect(hp); hp.connect(g); g.connect(bus);
+  hp.connect(send); send.connect(dl); dl.connect(fl); fl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(bus);
+  g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.95, t0 + 0.01); g.gain.setValueAtTime(0.95, tLast); g.gain.linearRampToValueAtTime(0, tLast + 0.12);
+  send.gain.setValueAtTime(0, t0); send.gain.setValueAtTime(0, tLast - P); send.gain.linearRampToValueAtTime(0.9, tLast - 0.5 * P); send.gain.setValueAtTime(0.9, tLast + 0.05); send.gain.linearRampToValueAtTime(0, tLast + 0.15);
+  s.start(t0, 0); s.stop(tLast + 0.2);
   hooksUsed.push(hk.h.id); if (hooksUsed.length > 12) hooksUsed.shift(); nextHook = null;
+  return { start: t0, end: tLast };
 }
 /* "word… word word-word": a sung word from the new song, quantized to the old song's beat in the loop's last bar */
 function wordTease(buf, at, pB, rB, tCut, P, nt) {
@@ -1903,6 +2017,61 @@ function wordTease(buf, at, pB, rB, tCut, P, nt) {
     e.gain.setValueAtTime(0, when); e.gain.linearRampToValueAtTime(1, when + 0.005); e.gain.setValueAtTime(1, when + len * P - 0.02); e.gain.linearRampToValueAtTime(0, when + len * P);
     s.connect(e); e.connect(hp); s.start(when, at, len * pB + 0.05); };
   hit(tCut - 4 * P, 2); hit(tCut - 2 * P, 1); hit(tCut - 1 * P, 0.5); hit(tCut - 0.5 * P, 0.5);
+}
+/* INTRO MOVES from the new song's own music, over the old song's loop leg (never two the same in a row; scratches now and then) */
+let moveBag = [], lastMove = null;
+function nextMove(mode, wordOk, riffOk) {
+  if (mode === "cut") return "roll";
+  for (let tries = 0; tries < 16; tries++) {
+    if (!moveBag.length) { moveBag = ["riff", "stabs", "swell", "tease", "roll", "riff", "clean", "scratch"]; for (let i = moveBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [moveBag[i], moveBag[j]] = [moveBag[j], moveBag[i]]; } }
+    const m = moveBag.shift();
+    if (m === lastMove || (m === "tease" && !wordOk) || ((m === "riff" || m === "stabs") && !riffOk) || (mode === "ride" && (m === "riff" || m === "stabs" || m === "swell"))) continue;
+    return (lastMove = m);
+  }
+  return (lastMove = "clean");
+}
+/* the new song's most musical 2 bars with nobody singing: keys, synth, horns or a guitar lick (melody, not the kick) */
+function riffSpot(buf, t, b0, pB) {
+  if (!buf) return null; let best = null, bs = -1e9;
+  for (let k = 0; k <= 120; k += 4) {
+    const c = b0 + k * pB; if (c + 8 * pB > buf.duration - 2) break;
+    const sf = singFrac(t, c, c + 8 * pB); if (sf != null && sf > 0.05) continue;
+    const bp = bandPow(buf, c, c + 8 * pB), sc = 10 * Math.log10(bp.full - bp.low + 1e-12) - 4 * Math.log10(bp.low + 1e-12) / 4 - (sf == null ? 30 * vocalness(buf, c, c + 8 * pB) : 0);
+    if (sc > bs) { bs = sc; best = c; }
+  }
+  return best;
+}
+/* MUSIC HOOK: the new song's riff rises in through a filter over the old song's last 2 bars, right into the cut-in */
+function musicTease(buf, at, rB, tCut, P, g0) {
+  if (at == null) return;
+  const s = actx.createBufferSource(), hp = biq("highpass", 2400, 0.8), g = actx.createGain(), t0 = tCut - 8 * P;
+  s.buffer = buf; s.playbackRate.value = rB; s.connect(hp); hp.connect(g); g.connect(bus);
+  hp.frequency.setValueAtTime(2400, t0); hp.frequency.exponentialRampToValueAtTime(240, tCut - 0.05);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.7 * g0, t0 + 5 * P); g.gain.setValueAtTime(0.7 * g0, tCut - 0.03); g.gain.linearRampToValueAtTime(0, tCut + 0.01);
+  s.start(t0, at); s.stop(tCut + 0.05);
+}
+/* KEYBOARD STABS: the riff chopped into off-beat stabs with an echo over the last bar, then a 16th pick-up into the cut-in */
+function keysStab(buf, at, pB, rB, tCut, P, g0) {
+  if (at == null) return;
+  const out = actx.createGain(), hp = biq("highpass", 380, 0.7), dl = actx.createDelay(2), fb = actx.createGain(), wet = actx.createGain();
+  out.gain.value = 0.85 * g0; dl.delayTime.value = Math.min(1.9, P / 2); fb.gain.value = 0.35; wet.gain.value = 0.4;
+  hp.connect(out); out.connect(bus); out.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(bus);
+  const hit = (when, off, len) => { const s = actx.createBufferSource(), e = actx.createGain(); s.buffer = buf; s.playbackRate.value = rB;
+    e.gain.setValueAtTime(0, when); e.gain.linearRampToValueAtTime(1, when + 0.004); e.gain.setValueAtTime(1, when + len - 0.02); e.gain.linearRampToValueAtTime(0, when + len);
+    s.connect(e); e.connect(hp); s.start(when, Math.max(0, off)); s.stop(when + len + 0.02); };
+  for (let k = 0; k < 4; k++) hit(tCut - 4 * P + (k + 0.5) * P, at + (4 + k + 0.5) * pB, 0.32 * P);   // the "and" of every beat
+  hit(tCut - 0.5 * P, at + 7.5 * pB, 0.22 * P); hit(tCut - 0.25 * P, at + 7.75 * pB, 0.22 * P);       // 16th pick-up
+}
+/* REVERSE SWELL: the new song's first two beats played backwards, rising into its own downbeat at the cut-in */
+function reverseSwell(buf, b0, pB, rB, tCut, P, g0) {
+  if (!buf) return;
+  const sr = buf.sampleRate, len = Math.floor(2 * pB * sr), i0 = Math.floor(b0 * sr); if (i0 < 0 || i0 + len > buf.length) return;
+  const ch = buf.numberOfChannels, rev = actx.createBuffer(ch, len, sr);
+  for (let c = 0; c < ch; c++) { const src = buf.getChannelData(c), r = rev.getChannelData(c); for (let i = 0; i < len; i++) r[i] = src[i0 + len - 1 - i]; }
+  const s = actx.createBufferSource(), g = actx.createGain(), hp = biq("highpass", 180, 0.7), t0 = tCut - 2 * pB / rB;
+  s.buffer = rev; s.playbackRate.value = rB; s.connect(hp); hp.connect(g); g.connect(bus);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.9 * g0, tCut - 0.02); g.gain.linearRampToValueAtTime(0, tCut + 0.01);
+  s.start(t0); s.stop(tCut + 0.05);
 }
 function mixNowGo() {
   const d = A(), nt = nextTrack();
@@ -2288,7 +2457,11 @@ async function importFiles(files, extra = {}) {
     setBusy(`Adding ${(i + 1).toLocaleString()} of ${list.length.toLocaleString()}: ${list[i].name}`);
     await new Promise(r => setTimeout(r, 30));
     if (skip.has(list[i])) continue;
-    if ([...st.hooks.values()].some(h => h.fileName === list[i].name)) continue; // that hook is already here
+    const oldHook = [...st.hooks.values()].find(h => h.fileName === list[i].name);
+    if (oldHook) { // the same hook: skip it, unless the Mac has made a new version (now cut on whole sentences)
+      if (oldHook.size === list[i].size) continue;
+      st.hooks.delete(oldHook.id); hookBufs.delete(oldHook.id); await dbDel("tracks", oldHook.id).catch(() => {}); await dbDel("audio", oldHook.id).catch(() => {});
+    }
     const have = [...st.tracks.values()].find(t => t.fileName === list[i].name && t.size === list[i].size);
     const older = !have && [...st.tracks.values()].find(t => t.fileName === list[i].name);
     if (older && !decks.some(d => d.track === older)) { try { if (await refreshFromFile(older, list[i])) { added.push(older); continue; } } catch (e) {} }
@@ -2474,6 +2647,7 @@ function applyApex(t, raw) {
   try {
     const a = JSON.parse(raw); if (!a || !Array.isArray(a.ph)) return;
     t.apex = { ph: a.ph.filter(x => Array.isArray(x) && x.length >= 3) }; t.vocIn = a.vi ?? null; t.vocOut = a.vo ?? null;
+    if (Array.isArray(a.vs)) t.vs = a.vs.filter(x => Array.isArray(x) && x.length >= 2 && x[1] > x[0]); // exactly when it sings, line by line
     if (!t.bpm && a.bpm) t.bpm = a.bpm;
     if (a.sc === 1 && Array.isArray(a.ex)) { t.explicit = a.ex; t.cleanChecked = 1; } // checked on the Mac
     else if (a.sc !== 1 && Array.isArray(t.explicit) && !t.explicit.length && !/\b(clean|radio edit|instrumental)\b/i.test(t.title + " " + (t.fileName || ""))) delete t.explicit; // tagged "clean" but never actually checked
@@ -2734,7 +2908,8 @@ function voxWanted(d, pos) {
   if (d.track && d.track.isInst) return "dry";
   const base = voxBase(d, pos);
   if (!mix || mix.pending || !mix.pro || !actx) return base;
-  const m = d === mix.from && mix.karAt != null && actx.currentTime >= mix.karAt ? "kar" : "dry";
+  const now = actx.currentTime + 0.02;
+  const m = d === mix.from && mix.karAt != null && now >= mix.karAt ? "kar" : d === mix.to && mix.bHold && now >= mix.bHold[0] && now < mix.bHold[1] ? "kar" : "dry";
   return VOX_RANK[m] > VOX_RANK[base] ? m : base;
 }
 function voxBase(d, pos) {
@@ -2834,10 +3009,11 @@ function planSheet() {
     const how = !md ? `<span class="tx bm">${A().track && A().track.id === t.id ? "now" : "first"}</span>` : lab[md];
     rows += `<div class="pr ${A().track && A().track.id === t.id ? "now" : ""}"><span class="pn">${i + 1}</span><div><b>${t.bad ? "⚠ " : ""}${esc(nm(t.title))}</b><small>${t.bpm ? Math.round(t.bpm) + " BPM" : "BPM ?"} · ${t.key || "key ?"}${t.energy ? " · ⚡" + t.energy : ""}${t.artist ? " · " + esc(nm(t.artist)) : ""}</small></div>${how}</div>`;
   });
+  const checkList = lastMixInfo && lastMixInfo.checks ? `<div class="checks">${lastMixInfo.checks.map(([k, ok, note]) => `<div class="ck ${ok ? "ok" : "warn"}"><b>${ok ? "✓" : "•"} ${esc(k)}</b><span>${esc(note)}</span></div>`).join("")}</div>` : "";
   const L = lastMixInfo, last = L ? `<p style="font-size:13px">Last mix: <b>${esc(L.mode === "cut" ? "power cut" : L.mode === "ride" ? `tempo ride ${L.N0}→${L.N}` : "beat mix")}</b> locked at <b>${L.N} BPM</b>${L.mode !== "cut" ? ` · kick/hat alignment ${L.lag >= 0 ? "+" : ""}${L.lag} ms (match ${L.lagQ}×)` : ""}${L.gB > 1.01 ? ` · intro lifted ${Math.round(20 * Math.log10(L.gB))} dB` : ""}${L.rhythm != null ? ` · rhythm match ${L.rhythm}%${L.rhythmK ? ` (moved ${L.rhythmK} beat${L.rhythmK === 1 ? "" : "s"} to line up the bars)` : ""}` : ""}${L.moves && L.moves.length ? ` · moves: ${esc(L.moves.join(", "))}` : ""}.</p>` : "";
   openSheet(`<h2>Auto mix plan</h2>
     <p>${S.nextMode === "best" ? `Best mixes first: songs that match at ${S.mixMin}% or better chain together beat on beat. The rest play after, highest BPM first.` : S.nextMode === "shuffle" ? "Shuffle is on, so the order is random. Turn off Shuffle for best mixes first." : "Playing in list order."}
-    <b style="color:var(--green)">${n.beat} beat mix${n.beat === 1 ? "" : "es"}</b> · <b style="color:var(--green)">${n.ride} tempo ride${n.ride === 1 ? "" : "s"}</b> · <b style="color:var(--gold)">${n.cut} power cut${n.cut === 1 ? "" : "s"}</b>${n.fade ? ` · ${n.fade} fade${n.fade === 1 ? "" : "s"}` : ""}.</p>${last}
+    <b style="color:var(--green)">${n.beat} beat mix${n.beat === 1 ? "" : "es"}</b> · <b style="color:var(--green)">${n.ride} tempo ride${n.ride === 1 ? "" : "s"}</b> · <b style="color:var(--gold)">${n.cut} power cut${n.cut === 1 ? "" : "s"}</b>${n.fade ? ` · ${n.fade} fade${n.fade === 1 ? "" : "s"}` : ""}.</p>${last}${checkList}
     <div class="plan">${rows}</div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`);
 }
 
@@ -3233,8 +3409,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.91";
+const APP_VERSION = "6.92";
 const CHANGELOG = [
+  ["6.92", "October 5, 2026", ["Two voices never talk over each other: the old song's singer finishes the line and echoes out on the beat, the new song's instrumental bridges the gap, and its words come in on their next line", "Vocal hooks: whole sentences, played only where nobody else is singing, then an echo out in time", "Intro moves from the new song's own music: a music-hook filter rise, keyboard stabs, a reverse swell, a word tease, a beat roll or a clean blend; scratches only now and then, never the same move twice in a row", "Auto mix plan shows the pro checklist for the last mix: tempo, beats, bars, key, vocals, bass, levels, intro, hook and exit", "In Clean mode, hooks with cuss words never play"]],
   ["6.91", "October 5, 2026", ["Long lists: once the sort buttons scroll away, a slim bar stays at the top with Mix / BPM / A–Z, Play, Select and ↑ Top", "Select songs: pick songs, then ▶ Play just those (in the best mix order), + Add them to a folder, or Delete them", "Missing audio: the message names the song, Fix it uses another copy already in your library when there is one, and Remove takes it out", "Adding a folder again no longer counts songs that were already there as new"]],
   ["6.90", "October 5, 2026", ["Fixed: the app could close by itself at startup (\"A problem repeatedly occurred\") when instrumentals had been added as songs: they're now sorted by name without loading any audio", "If the app ever does close while starting, the next start skips background clean-up so it can't happen twice in a row", "After a restart your play list is still there: Play continues the same song where it was, and Next keeps going instead of saying the list ended", "Songs load with less memory (unpacked at CD rate, no extra copy), so long mixing sessions on iPhone stay well within its limits"]],
   ["6.89", "October 5, 2026", ["Fixed: tapping ahead on the song bar to test a mix could close the app on iPhone (the next song was being loaded twice at once); each song now loads once, and the old song's memory is freed after every mix", "Main Instrumentals: the Mac's instrumentals get their own orange folder and stay out of My DJ Library", "Instrumental only now plays a song's real instrumental when you have it (spotless), and takes the vocals out of the rest", "Phones: song titles get much more room and bigger, brighter text"]],
