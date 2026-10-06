@@ -293,7 +293,7 @@ button{cursor:pointer}
 .pick{width:22px;height:22px;accent-color:var(--red);margin:0 auto;display:block;cursor:pointer}
 .selmode .row{cursor:pointer}
 .ex{color:var(--red);font:700 10px var(--mono);margin-left:6px;vertical-align:middle;border:1px solid currentColor;border-radius:4px;padding:0 4px}
-.ex.ok{color:var(--green)}
+.ex.ok{color:var(--green)} .ex.wait{color:var(--gold)}
 .plan{display:grid;gap:4px;counter-reset:n}
 .plan .pr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 10px;border-radius:10px;background:var(--panel2)}
 .plan .pr.now{box-shadow:inset 3px 0 0 var(--red)}
@@ -1414,6 +1414,7 @@ async function hardPlay(i) {
     return;
   }
   hardPlay.fails = 0; if (t.bad) { delete t.bad; dbPut("tracks", t).catch(() => {}); }
+  noteUnchecked(t);
   d.el.playbackRate = d.el instanceof BufferPlayer && t.bpm ? Math.round(t.bpm) / t.bpm : 1; // plays at a whole-number tempo
   setParam(d.gain.gain, 1); resetFx(d);
   d.el.currentTime = startPoint(t, d);
@@ -2098,6 +2099,14 @@ function nudge() { // keep the beats locked during a blend by bending the incomi
   const want = Math.abs(err) > 0.008 ? m.rate + clamp(err * m.nextP / 1.2, -0.03, 0.03) : m.rate;
   if (Math.abs(m.to.el.playbackRate - want) > 0.0005) m.to.el.playbackRate = want;
 }
+/* in Clean mode a song nobody has checked for cuss words plays through the vocal remover, which sounds hollow ("in a
+   tunnel"): say so the first time each one plays, so it never seems broken */
+const uncheckedNoted = new Set();
+function noteUnchecked(t) {
+  if (!t || !S.clean || S.novocals || t.isInst || scanned(t) || S.cleanUnscanned === "asis" || uncheckedNoted.has(t.id)) return;
+  uncheckedNoted.add(t.id);
+  toast(`“${nm(t.title)}” hasn't been checked for cuss words yet, so Clean mode plays it with the vocals taken out (that's the hollow sound). Once the Mac has checked it and you add its folder again, it plays normally.`, 9000);
+}
 function finishMix() {
   const m = mix; mix = null;
   const { from, to } = m;
@@ -2114,7 +2123,7 @@ function finishMix() {
       for (let k = k0; n !== own; k++) { n += own > n ? 1 : -1; const tk = to.el.timeOf(m.bStart + k * 8 * m.pB); if (tk == null) break; to.el.setRateAt(n * m.pB / 60, tk); }
     }
   } else if (S.easeBack && Math.abs(m.rate - 1) > 0.001) ease = { d: to, from: m.rate, t0: performance.now(), dur: 24000 };
-  computeNext(); renderAll(); mediaMeta();
+  computeNext(); renderAll(); mediaMeta(); noteUnchecked(to.track);
 }
 
 /* ---------- DJ drops: every drop is produced fresh — punched-up voice, stutter, sub boom, echo tail, riser, air horn ---------- */
@@ -2812,7 +2821,7 @@ function renderList() {
       + list.map((t, i) => (mixView && i === mixOrderCache.chained && i < list.length && i > 0 ? `<div class="mixsep">${S.unmatched === "skip" ? `Below ${S.mixMin}% match: these won't play in auto mix` : `Below ${S.mixMin}%: these play after, highest BPM first, with tempo rides and power cuts`}</div>` : "")
         + `<div class="row ${t.isInst ? "inst" : ""} ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
         ${st.sel ? `<input class="pick" type="checkbox" data-act="pick" ${st.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}">` : `<button class="r-n" type="button" data-act="play" aria-label="Play ${esc(t.title)}"><span>${i + 1}</span>${ICON_PLAY}</button>`}
-        <button class="r-t" type="button" data-act="${st.sel ? "pick" : "play"}"><b>${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${S.clean && scanned(t) ? (t.explicit.length ? `<span class="ex" title="${t.explicit.length} cuss words filtered">E ${t.explicit.length}</span>` : `<span class="ex ok" title="Checked: no cuss words">✓</span>`) : ""}</b><small>${mixView && i > 0 ? mixTagFor(list[i - 1], t, i) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}<span class="mt num"> · ${fmt(t.duration)}</span></small></button>
+        <button class="r-t" type="button" data-act="${st.sel ? "pick" : "play"}"><b>${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${S.clean && scanned(t) ? (t.explicit.length ? `<span class="ex" title="${t.explicit.length} cuss words filtered">E ${t.explicit.length}</span>` : `<span class="ex ok" title="Checked: no cuss words">✓</span>`) : S.clean && !t.isInst && S.cleanUnscanned !== "asis" ? `<span class="ex wait" title="Not checked for cuss words yet: Clean mode plays it with the vocals taken out">not checked</span>` : ""}</b><small>${mixView && i > 0 ? mixTagFor(list[i - 1], t, i) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}<span class="mt num"> · ${fmt(t.duration)}</span></small></button>
         <div class="r-b ${t.bpm ? "" : "none"}" style="--bh:${t.bpm ? Math.round(clamp(230 - (t.bpm - 70) * 2.6, 0, 230)) : 200}" title="${t.bpmAuto ? "Detected automatically" : "From you or the file"}">${t.bpm ? Math.round(t.bpm) : "–"}</div>
         <div class="r-k">${keyChip(t, ref)}</div>
         <div class="r-time">${fmt(t.duration)}</div>
@@ -3421,8 +3430,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.94";
+const APP_VERSION = "6.95";
 const CHANGELOG = [
+  ["6.95", "October 6, 2026", ["Clean mode: songs not checked for cuss words yet are tagged “not checked”, and the first time one plays the app explains why it sounds hollow (its vocals are taken out until the Mac has checked it)"]],
   ["6.94", "October 5, 2026", ["Songs in Apple's .m4a format now get everything the Mac works out for them too: the cuss-word check for Clean mode, the vocal map and the beat grid (before, only MP3s did)"]],
   ["6.93", "October 5, 2026", ["New app icon: the red APEX drone (camera head, headphones, DJ STYLE) over “Apex Studios” in the title's red-to-blue colours", "The name under the Home Screen icon is now “Apex Studios”", "Sharing apex-dj.github.io shows the drone and “Apex Studios” as the link picture"]],
   ["6.92", "October 5, 2026", ["Two voices never talk over each other: the old song's singer finishes the line and echoes out on the beat, the new song's instrumental bridges the gap, and its words come in on their next line", "Vocal hooks: whole sentences, played only where nobody else is singing, then an echo out in time", "Intro moves from the new song's own music: a music-hook filter rise, keyboard stabs, a reverse swell, a word tease, a beat roll or a clean blend; scratches only now and then, never the same move twice in a row", "Auto mix plan shows the pro checklist for the last mix: tempo, beats, bars, key, vocals, bass, levels, intro, hook and exit", "In Clean mode, hooks with cuss words never play"]],
