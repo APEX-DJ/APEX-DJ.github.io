@@ -353,7 +353,10 @@ button{cursor:pointer}
 
 /* sheets and dialogs */
 .scrim{position:fixed;inset:0;background:rgba(4,4,10,.7);display:grid;place-items:center;padding:16px;z-index:20}
-.sheet{width:min(540px,100%);max-height:calc(100% - 32px);overflow:auto;background:linear-gradient(180deg,#171a28,#10121c);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.sheet{width:min(540px,100%);max-height:calc(100% - 32px);overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;grid-template-columns:minmax(0,1fr);background:linear-gradient(180deg,#171a28,#10121c);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.sheet > *{min-width:0;max-width:100%}
+.sheet .newpl{flex-wrap:wrap} .sheet .newpl input{flex:1 1 160px} .sheet .newpl .btn{flex:0 0 auto}
+.sheet .fmrow .b button{white-space:nowrap}
 .sheetlogo{display:block;width:100%;height:auto;aspect-ratio:16/9;max-height:120px;object-fit:contain;background:#000;border-radius:10px}
 .sheet h2{margin:0;font:800 26px/1.1 var(--display);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
 .sheet p{margin:0;color:var(--muted)}
@@ -2526,7 +2529,8 @@ async function importFiles(files, extra = {}) {
   setBusy(""); renderAll();
   if (unsavedCount) { const n = unsavedCount; unsavedCount = 0; setTimeout(() => toast(`${n} song${n === 1 ? "" : "s"} will play now, but this device didn't keep ${n === 1 ? "its" : "their"} audio (storage full or blocked). Menu → Storage check shows why.`, 9000), 5600); }
   const fresh = added.length - repaired - already;
-  if (added.length && !extra.quiet) toast([repaired ? `Repaired ${repaired} song${repaired === 1 ? "" : "s"}` : "", fresh > 0 ? `added ${fresh} song${fresh === 1 ? "" : "s"}${pl ? " to " + pl.name : ""}` : ""].filter(Boolean).join(", ").replace(/^a/, "A") + ".", 5000);
+  if (added.length && !extra.quiet) toast([repaired ? `Repaired ${repaired} song${repaired === 1 ? "" : "s"}` : "", fresh > 0 ? `added ${fresh} song${fresh === 1 ? "" : "s"}${pl ? " to " + pl.name : ""}` : "",
+    already && pl ? `put ${already} song${already === 1 ? "" : "s"} you already had into “${pl.name}”` : already ? `${already} song${already === 1 ? " was" : "s were"} already here` : ""].filter(Boolean).join(", ").replace(/^./, c => c.toUpperCase()) + ".", 6000);
   return added;
 }
 /* Analysis decodes at 22 kHz: half the memory of normal playback, which keeps phones from running out while adding
@@ -2603,7 +2607,7 @@ function askDuplicates(dups) {
   return new Promise(res => {
     const where = t => { const f = st.playlists.filter(p => p.ids.includes(t.id)).map(p => p.name); return f.length ? "in " + f.join(", ") : "in My DJ Library"; };
     openSheet(`<h2>Already in your library</h2><p>${dups.length === 1 ? "This song is" : dups.length + " of these songs are"} already here.</p>
-      <details class="dupd"><summary>Show the song${dups.length === 1 ? "" : "s"}</summary><div class="menu" style="max-height:34vh;overflow:auto">${dups.slice(0, 40).map(([f, t]) => `<div style="padding:6px 12px"><b>${esc(t.title)}</b><br><small style="color:var(--muted)">${esc(t.artist || "")} · ${esc(where(t))}</small></div>`).join("")}${dups.length > 40 ? `<div style="padding:6px 12px;color:var(--muted)">…and ${dups.length - 40} more</div>` : ""}</div></details>
+      <details class="dupd"><summary>Show the song${dups.length === 1 ? "" : "s"}</summary><div class="menu">${dups.slice(0, 40).map(([f, t]) => `<div style="padding:6px 12px"><b>${esc(t.title)}</b><br><small style="color:var(--muted)">${esc(t.artist || "")} · ${esc(where(t))}</small></div>`).join("")}${dups.length > 40 ? `<div style="padding:6px 12px;color:var(--muted)">…and ${dups.length - 40} more</div>` : ""}</div></details>
       <div class="foot"><button class="btn" type="button" id="dupAdd">Add them again</button><button class="btn primary" type="button" id="dupSkip">Skip duplicates</button></div>`, sh => {
       sh.querySelector("#dupSkip").onclick = () => { closeSheet(); res("skip"); };
       sh.querySelector("#dupAdd").onclick = () => { closeSheet(); res("add"); };
@@ -2617,7 +2621,7 @@ function findDuplicates() {
   if (!dups.length) return toast("No duplicate songs in your library.");
   const extras = dups.flatMap(g => { const keep = g.slice().sort((a, b) => st.playlists.filter(p => p.ids.includes(b.id)).length - st.playlists.filter(p => p.ids.includes(a.id)).length || a.added - b.added)[0]; return g.filter(t => t !== keep); });
   openSheet(`<h2>Duplicate songs</h2><p>${dups.length} song${dups.length === 1 ? "" : "s"} appear more than once (${extras.length} extra cop${extras.length === 1 ? "y" : "ies"}).</p>
-    <details class="dupd"><summary>Show them</summary><div class="menu" style="max-height:34vh;overflow:auto">${dups.map(g => `<div style="padding:6px 12px"><b>${esc(g[0].title)}</b> <span class="fcount">×${g.length}</span><br><small style="color:var(--muted)">${esc(g[0].artist || "")}</small></div>`).join("")}</div></details>
+    <details class="dupd"><summary>Show them</summary><div class="menu">${dups.map(g => `<div style="padding:6px 12px"><b>${esc(g[0].title)}</b> <span class="fcount">×${g.length}</span><br><small style="color:var(--muted)">${esc(g[0].artist || "")}</small></div>`).join("")}</div></details>
     <div class="foot"><button class="btn" type="button" data-close>Close</button><button class="btn primary" type="button" id="dupSel">Select the extra copies</button></div>`, sh => {
     sh.querySelector("#dupSel").onclick = () => { closeSheet(); st.view = "library"; st.q = ""; st.sel = new Set(extras.map(t => t.id)); renderAll(); toast("The extra copies are selected. Check them, then press Delete."); };
   });
@@ -3057,8 +3061,8 @@ function hookSheet() {
   openSheet(`<h2>Vocal hooks</h2>
     <p>Acapella hooks from your songs, cut on your Mac. During a mix, one is laid over the new song's intro, key-matched and locked to the tempo, for a live mashup.</p>
     <div class="opts"><div class="opt"><span>Use hooks in mixes</span><div class="seg"><button type="button" data-hk="on" aria-pressed="${S.useHooks !== false}">On</button><button type="button" data-hk="off" aria-pressed="${S.useHooks === false}">Off</button></div></div></div>
-    <p><b>${H.length}</b> hook${H.length === 1 ? "" : "s"} here.${H.length ? "" : " Add them like songs: Add music → iCloud Drive › Apex Studios DJ App › Vocal Hooks (select all)."}</p>
-    ${H.length ? `<details class="dupd"><summary>Show them</summary><div class="menu" style="max-height:34vh;overflow:auto">${H.slice(0, 300).map(h => `<div style="padding:6px 12px"><b>${esc(h.hook.from)}</b><br><small style="color:var(--muted)">${Math.round(h.bpm)} BPM · ${esc(h.key || "")}</small></div>`).join("")}</div></details>` : ""}
+    <p><b>${H.length}</b> hook${H.length === 1 ? "" : "s"} here (tap “Show them” to see every one).${H.length ? "" : " Add them like songs: Add music → iCloud Drive › Apex Studios DJ App › Vocal Hooks (select all)."}</p>
+    ${H.length ? `<details class="dupd"><summary>Show them</summary><div class="menu">${H.map(h => `<div style="padding:6px 12px"><b>${esc(h.hook.from)}</b><br><small style="color:var(--muted)">${Math.round(h.bpm)} BPM · ${esc(h.key || "")}${h.hook.text ? ` · “${esc(nm(h.hook.text))}”` : ""}</small></div>`).join("")}</div></details>` : ""}
     <div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`, sh => sh.querySelectorAll("[data-hk]").forEach(b => b.onclick = () => { S.useHooks = b.dataset.hk === "on"; saveS(); closeSheet(); hookSheet(); }));
 }
 
@@ -3364,7 +3368,7 @@ function folderMenu() {
       s.querySelectorAll("[data-fr]").forEach(b => b.onclick = () => renameFolder(st.playlists.find(p => p.id === b.dataset.fr), folderMenu));
     };
     list();
-    s.querySelector("#fm-new").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#fm-name").value.trim(); if (!n) return; await createPlaylist(n); s.querySelector("#fm-name").value = ""; renderSide(); list(); toast(`Folder “${n}” created.`); });
+    s.querySelector("#fm-new").addEventListener("submit", async e => { e.preventDefault(); const n = s.querySelector("#fm-name").value.trim(); if (!n) return; await createPlaylist(n); s.querySelector("#fm-name").value = ""; renderSide(); list(); toast(`Folder “${n}” created. Tap its “Add songs” button to fill it.`, 6000); });
     s.querySelector("#fm-import").onclick = () => { closeSheet(); $("#folder").click(); };
   });
 }
@@ -3444,8 +3448,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.97";
+const APP_VERSION = "6.98";
 const CHANGELOG = [
+  ["6.98", "October 6, 2026", ["Adding music while My DJ Library is open asks which folder the songs should go in (or a new one), so they never end up only in the library by surprise", "Menus fit the phone: nothing slides left and right, long rows wrap", "Vocal hooks and duplicate lists show every entry (with the hook's words) instead of a tiny box that only showed three"]],
   ["6.97", "October 6, 2026", ["The song list's header row (Mix / BPM / A–Z, Play, Select, ↑ Top) now stays put at the top while you scroll, fits every iPhone (also with larger text), and wraps instead of running off the screen", "Every menu has a ✕ pinned at the top and its Done button pinned at the bottom, so you can always get out without scrolling"]],
   ["6.96", "October 6, 2026", ["⏮ goes back to the song you just heard (even after auto mix), a few bars before its mix so you hear it again; the song you were on stays next, so ⏭ takes you forward again"]],
   ["6.95", "October 6, 2026", ["Clean mode: songs not checked for cuss words yet are tagged “not checked”, and the first time one plays the app explains why it sounds hollow (its vocals are taken out until the Mac has checked it)"]],
@@ -3592,7 +3597,19 @@ setInterval(titleFrame, 40); // a plain timer keeps dancing in every browser vie
 function syncTitle() {}
 
 /* ---------- wiring ---------- */
-$("#addBtn").onclick = () => $("#file").click();
+$("#addBtn").onclick = () => {
+  const pl = curPl(), folders = st.playlists.filter(p => p.name !== INST_FOLDER);
+  if (pl || !folders.length) { st.importTarget = pl || null; return $("#file").click(); }   // inside a folder: they go into it
+  openSheet(`<h2>Add songs to…</h2><p>Songs always go into My DJ Library. Pick a folder to put them in too.</p>
+    <div class="menu">${folders.map(p => `<button type="button" data-into="${p.id}">📁 ${esc(p.name)} <span class="fcount">${plTracks(p).length}</span></button>`).join("")}<button type="button" data-into="">Just My DJ Library</button></div>
+    <form class="newpl" id="np3"><input id="np3name" placeholder="Or a new folder: type its name" aria-label="New folder title" maxlength="60"><button class="btn primary" type="submit">Create &amp; add</button></form>`, sh => {
+    sh.querySelectorAll("[data-into]").forEach(b => b.onclick = () => { st.importTarget = st.playlists.find(p => p.id === b.dataset.into) || null; closeSheet(); $("#file").click(); });
+    sh.querySelector("#np3").addEventListener("submit", e => { e.preventDefault(); const n = sh.querySelector("#np3name").value.trim(); if (!n) return;
+      // made on the spot (saved in the background): iPhone only opens Files right after a tap, so nothing may wait first
+      const p = { id: uid(), name: n, ids: [], created: Date.now() }; st.playlists.push(p); dbPut("playlists", p).catch(() => {});
+      st.importTarget = p; st.view = p.id; lsSet("cb.view", st.view); closeSheet(); $("#file").click(); renderAll(); });
+  });
+};
 $("#folderBtn").onclick = folderMenu;
 $("#folder").addEventListener("change", e => { const f = [...(e.target.files || [])]; e.target.value = ""; if (f.length) chooseDest(groupByFolder(f.map(x => [x, x.webkitRelativePath || x.name]))); });
 $("#file").addEventListener("change", e => { const f = e.target.files, target = st.importTarget; st.importTarget = null; if (f && f.length) importFiles(f, target ? { playlist: target } : {}); e.target.value = ""; });
