@@ -233,6 +233,24 @@ button{cursor:pointer}
 .dt{min-width:0;display:flex;gap:8px;align-items:baseline}
 .dt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
 .dt small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dt b[data-act]{cursor:pointer}
+.dt .dact{margin-left:auto;display:flex;gap:6px;flex:none;align-self:center}
+.dt .dact button{width:34px;height:30px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:700 16px/1 var(--body);padding:0}
+.dt .dact button svg{width:16px;height:16px}
+.dt .dact button.on{color:#ff4d6d;border-color:rgba(255,77,109,.5);background:rgba(255,77,109,.12)}
+.fav{color:#ff4d6d;margin-right:5px;font-size:.9em}
+.nexttag{font:800 10px var(--mono);letter-spacing:.06em;color:#071018;background:var(--grad-cool);padding:2px 7px;border-radius:999px;margin-right:6px;white-space:nowrap}
+.row.flash{animation:rowflash 2.4s ease-out}
+@keyframes rowflash{0%,40%{box-shadow:inset 0 0 0 2px var(--gold),0 0 18px rgba(255,194,61,.45)}100%{box-shadow:none}}
+.r-n.grip{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;display:grid;place-items:center;gap:0;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:9px;height:auto;min-height:34px}
+.r-n.grip span{font-size:9px;line-height:1;display:block!important}
+.r-n.grip i{font-style:normal;font-size:17px;line-height:1;color:var(--fg)}
+.row.on .r-n.grip span{display:none!important} .row.on .r-n.grip::before{margin-bottom:2px}
+.row.dragging{position:relative;z-index:5;background:var(--panel2);box-shadow:0 10px 26px rgba(0,0,0,.55),inset 0 0 0 1px var(--gold);transition:none}
+.list .row{transition:transform .12s}
+.list .row.dragging{transition:none}
+.dt b{min-width:0;flex:0 1 auto}
+.menu button.go{background:var(--grad-cool);color:#071018;border-color:transparent;font-weight:800}
 .bar{position:relative;height:9px;border-radius:5px;background:var(--raise);overflow:hidden;cursor:pointer}
 .bar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--dg);border-radius:5px}
 .bar u{position:absolute;top:0;bottom:0;left:0;width:0;background:repeating-linear-gradient(135deg,rgba(255,194,61,.6) 0 3px,transparent 3px 6px)}
@@ -298,6 +316,7 @@ button{cursor:pointer}
 .plan{display:grid;gap:4px;counter-reset:n}
 .plan .pr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 10px;border-radius:10px;background:var(--panel2)}
 .plan .pr.now{box-shadow:inset 3px 0 0 var(--red)}
+.plan .pr[data-pid]{cursor:pointer} .plan .pr[data-pid]:active{background:var(--raise)}
 .plan .pr b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
 .plan .pr small{color:var(--muted);font:12px var(--mono)}
 .plan .pn{font:700 12px var(--mono);color:var(--faint);text-align:center}
@@ -541,6 +560,8 @@ html,body{max-width:100%;overflow-x:hidden}
 .listbar .seg3{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);min-width:0}
 .listbar .seg3 button{border:0;border-radius:999px;padding:6px 10px;background:none;color:var(--muted);font:700 13px/1 var(--body);white-space:nowrap}
 .listbar .seg3 button[aria-pressed="true"]{background:var(--grad-cool);color:#071018}
+.listbar .ordsel{display:none;min-height:34px;padding:6px 28px 6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%237fd8ff' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 11px center;color:var(--fg);font:700 13px/1 var(--body);-webkit-appearance:none;appearance:none;max-width:112px}
+@media (max-width:560px){ .listbar .seg3{display:none} .listbar .ordsel{display:inline-block} }
 .listbar .lb{min-height:34px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:700 13px/1 var(--body);white-space:nowrap}
 .listbar .lb-play{background:linear-gradient(90deg,var(--red),var(--gold));color:#1a0d00;border-color:transparent}
 .listbar .lb-top{border-color:var(--gold);color:var(--gold);min-width:42px;font-size:17px}
@@ -1212,9 +1233,16 @@ function impulse(sec) {
   for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3); }
   return b;
 }
+// phones and tablets: the music hands off to a plain player whenever you leave the app (see "background play")
+const PHONE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+// tell the phone this app plays music, like a music app: it keeps going with the ring switch on silent and in the background
+function playbackSession() { try { if (navigator.audioSession && navigator.audioSession.type !== "playback") navigator.audioSession.type = "playback"; } catch (e) {} }
+playbackSession();
 function ensureCtx() {
   if (actx) return actx;
+  playbackSession();
   actx = new (window.AudioContext || window.webkitAudioContext)();
+  actx.addEventListener("statechange", () => { if (document.hidden) checkBg(); }); // the phone stopped the mixer: hand off right away
   master = actx.createGain(); // the full mix: everything the app plays meets here
   volNode = actx.createGain(); applyVol();
   const limiter = () => { const c = actx.createDynamicsCompressor(); c.threshold.value = -1.5; c.knee.value = 1; c.ratio.value = 20; c.attack.value = 0.003; c.release.value = 0.2; return c; };
@@ -1290,7 +1318,8 @@ function resetFx(d) {
 async function loadDeck(d, t) { // the same song asked for twice on the same deck: wait for the first load, never decode it twice
   if (d.loading && d.loading.t === t) return d.loading.p;
   const p = loadDeckNow(d, t); d.loading = { t, p };
-  try { return await p; } finally { if (d.loading && d.loading.p === p) d.loading = null; }
+  try { await p; } finally { if (d.loading && d.loading.p === p) d.loading = null; }
+  prepBgClean(d);
 }
 async function loadDeckNow(d, t) {
   let blob = null; try { blob = await audioBlob(t.id); } catch (e) {}
@@ -1298,7 +1327,7 @@ async function loadDeckNow(d, t) {
   if (!blob.size) throw new Error("The file is empty. It may not have finished downloading from iCloud: delete it and add it again.");
   const f = { blob };
   if (d.url) URL.revokeObjectURL(d.url);
-  d.url = URL.createObjectURL(f.blob); d.track = t; d.unlocked = true; d.plan = null; applyNorm(d);
+  d.url = URL.createObjectURL(f.blob); d.track = t; d.unlocked = true; d.plan = null; d.light = false; dropBgSrc(d); applyNorm(d);
   if (d.bp) {
     try {
       const buf = await decode(await f.blob.arrayBuffer());
@@ -1542,7 +1571,7 @@ async function startMix(manual = false) {
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track;
   if (!nt) return;
   const plan = manual ? manualPlan(from) : planFor(from);
-  mix = { pending: true, from, to, nextI }; // claimed right away: the playback loop must never start a second mix while this one gets ready
+  mix = { pending: true, from, to, nextI, fromPos: from.el.currentTime }; // claimed right away: the playback loop must never start a second mix while this one gets ready
   ease = null;
   await actx.resume().catch(() => {});
   if (mix == null || mix.to !== to) return;
@@ -1714,7 +1743,7 @@ async function startProMix() {
   ensureCtx();
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track, plan = planFor(from);
   if (!nt || !plan.pro) return startMix();
-  mix = { pending: true, from, to, nextI }; ease = null; // claimed right away: no second mix can start while this one gets ready
+  mix = { pending: true, from, to, nextI, fromPos: from.el.currentTime }; ease = null; // claimed right away: no second mix can start while this one gets ready
   await actx.resume().catch(() => {});
   if (!mix || mix.to !== to) return;
   const ready = prep && prep.ready && prep.deck === to && prep.id === nt.id && to.track === nt; prep = null;
@@ -2155,7 +2184,7 @@ function finishMix() {
       for (let k = k0; n !== own; k++) { n += own > n ? 1 : -1; const tk = to.el.timeOf(m.bStart + k * 8 * m.pB); if (tk == null) break; to.el.setRateAt(n * m.pB / 60, tk); }
     }
   } else if (S.easeBack && Math.abs(m.rate - 1) > 0.001) ease = { d: to, from: m.rate, t0: performance.now(), dur: 24000 };
-  computeNext(); renderAll(); mediaMeta(); noteUnchecked(to.track);
+  computeNext(); renderAll(); mediaMeta(); noteUnchecked(to.track); finishDelete();
 }
 
 /* ---------- DJ drops: every drop is produced fresh — punched-up voice, stutter, sub boom, echo tail, riser, air horn ---------- */
@@ -2372,16 +2401,34 @@ function restoreQueue() { // after a restart: the same list, ready to continue w
   try { computeNext(); } catch (e) {}
 }
 setInterval(() => { if (st.playing) saveQueue(); }, 5000);
+function popPrev(cur) { // the last song heard before this one (skipping this one and any whose audio went missing)
+  while (st.history.length) { const h = st.history.pop(), t = st.tracks.get(h.id); if (t && !t.bad && (!cur || h.id !== cur.id)) return h; }
+  return null;
+}
+function requeuePrev(prev, cur) { // back in the list just before the song you were on, so ⏭ (or auto mix) takes you forward again
+  st.queue = st.queue.filter(x => x !== prev.id); let at = cur ? st.queue.indexOf(cur.id) : -1; if (at < 0) at = clamp(st.qi, 0, st.queue.length);
+  st.queue.splice(at, 0, prev.id); if (cur) st.played.delete(cur.id); st.played.delete(prev.id); st.forcedNext = false;
+  return at;
+}
 async function skipPrev() {
+  if (bgMode) return bgBack();
   const d = A(), cur = d.track;
-  let prev = null; while (st.history.length) { const h = st.history.pop(); if (st.tracks.has(h.id) && (!cur || h.id !== cur.id) && !st.tracks.get(h.id).bad) { prev = h; break; } }
-  if (!prev) { // nothing played before this one: start it over
-    if (cur) d.el.currentTime = startPoint(cur, d); else if (st.queue.length) hardPlay(0);
+  if (mix && !mix.pending && mix.from === d && cur) { // in the middle of a mix: back to just before it, so you hear that mix again
+    const m = mix, P = cur.bpm ? 60 / cur.bpm : 0.5, nt = m.to && m.to.track;
+    const back = Math.max(startPoint(cur, d), (m.M != null ? m.M : m.fromPos != null ? m.fromPos : d.el.currentTime - 20) - 16 * P);
+    cancelMix(); ease = null;
+    try { d.el.currentTime = back; } catch (e) {}
+    d.el.playbackRate = d.el instanceof BufferPlayer && cur.bpm ? Math.round(cur.bpm) / cur.bpm : 1; d.plan = null;
+    if (st.playing && d.el.paused) d.el.play().catch(() => {});
+    computeNext(); renderAll(); toast(nt ? `Back to just before the mix into “${nm(nt.title)}”.` : "Back to just before the mix.", 2500);
     return;
   }
-  // put it back in the list just before the song you were on, so ⏭ (or auto mix) takes you forward again
-  st.queue = st.queue.filter(x => x !== prev.id); let at = cur ? st.queue.indexOf(cur.id) : -1; if (at < 0) at = Math.max(0, st.qi);
-  st.queue.splice(at, 0, prev.id); if (cur) st.played.delete(cur.id); st.played.delete(prev.id); st.forcedNext = false;
+  const prev = popPrev(cur);
+  if (!prev) { // nothing played before this one: start it over
+    if (cur) { d.el.currentTime = startPoint(cur, d); d.plan = null; toast("Back to the start of this song.", 2000); } else if (st.queue.length) hardPlay(0);
+    return;
+  }
+  const at = requeuePrev(prev, cur);
   await hardPlay(at, { back: true });
   const t = st.tracks.get(prev.id), P = t && t.bpm ? 60 / t.bpm : 0.5;
   if (prev.out != null && A().track === t && A().el.duration) { // a few bars before it mixed out, so that mix plays again
@@ -2417,7 +2464,8 @@ function refineTrack(t, buf) {
 
 /* ---------- app state ---------- */
 const st = { hooks: new Map(), tracks: new Map(), playlists: [], view: lsGet("cb.view") || "library", sort: lsGet("cb.sort") || { k: "added", dir: -1 }, q: "",
-  queue: [], qi: -1, nextI: null, forcedNext: false, played: new Set(), playing: false, queueSource: null, busy: "", history: [] };
+  queue: [], qi: -1, nextI: null, forcedNext: false, played: new Set(), playing: false, queueSource: null, busy: "", history: [],
+  queueView: null, queuedNext: null, libOrder: lsGet("cb.libOrder") || null, pendingDelete: null };
 const curPl = () => st.playlists.find(p => p.id === st.view) || null;
 function viewTracks() {
   let list;
@@ -2428,6 +2476,7 @@ function viewTracks() {
     if (S.plSort === "mix" && !st.sortClicked) list = mixOrder(list.map(t => t.id));
     else if (S.plSort === "bpm" && !st.sortClicked) list.sort((a, b) => (a.bpm || 999) - (b.bpm || 999) || a.title.localeCompare(b.title));
     else if (S.plSort === "alpha" && !st.sortClicked) list.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }));
+    else if (S.plSort === "mine" && !st.sortClicked) { const at = new Map((st.libOrder || []).map((id, i) => [id, i])); list.sort((a, b) => (at.has(a.id) ? at.get(a.id) : 1e13 + (a.added || 0)) - (at.has(b.id) ? at.get(b.id) : 1e13 + (b.added || 0))); }
     const { k, dir } = st.sort;
     const val = t => k === "title" ? t.title.toLowerCase() : k === "artist" ? (t.artist || "").toLowerCase() : k === "bpm" ? (t.bpm || 0) : k === "key" ? (t.key ? parseInt(t.key) * 2 + (t.key.endsWith("B") ? 1 : 0) : 99) : k === "time" ? (t.duration || 0) : t.added;
     if (st.sortClicked) list.sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * dir);
@@ -2442,15 +2491,16 @@ function mixOrder(ids) {
   if (mixOrderCache.key !== k) { const o = bestOrder(ids); mixOrderCache = { key: k, order: o.order, chained: o.chained }; }
   return mixOrderCache.order.map(id => st.tracks.get(id)).filter(Boolean);
 }
-function orderPl(pl) { // folders: best-mix order (how auto mix plays them), BPM, or A to Z
+function orderPl(pl) { // folders: best-mix order (how auto mix plays them), BPM, A to Z, or your own order
   const list = pl.ids.map(id => st.tracks.get(id)).filter(Boolean);
+  if (S.plSort === "mine") return list;
   if (S.plSort === "mix") return mixOrder(list.map(t => t.id));
   if (S.plSort === "alpha") list.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }));
   else list.sort((a, b) => (a.bpm || 999) - (b.bpm || 999) || a.title.localeCompare(b.title));
   return list;
 }
 function syncQueueBest() { // re-plan what's left of the queue after a setting change
-  const cur = A().track && A().track.id; if (!cur || !st.queue.length) return;
+  const cur = A().track && A().track.id; if (!cur || !st.queue.length || S.plSort === "mine") return;
   const rest = [...new Set(st.queue)]; const o = bestOrder(rest, cur);
   st.queue = S.unmatched === "skip" ? o.order.slice(0, Math.max(1, o.chained)) : o.order; st.qi = 0; st.forcedNext = false;
 }
@@ -2466,14 +2516,28 @@ function instSwap(ids) {
 }
 function setQueue(ids) {
   st.queueSource = curPl() && !st.q ? curPl().id : null; ids = instSwap(ids);
-  st.queue = ids.filter(id => { const t = st.tracks.get(id); return t && !t.bad; }); st.queueSource = curPl() && !st.q ? curPl().id : null; st.played = new Set(); st.forcedNext = false; }
+  st.queue = ids.filter(id => { const t = st.tracks.get(id); return t && !t.bad; }); st.queueSource = curPl() && !st.q ? curPl().id : null; st.played = new Set(); st.forcedNext = false;
+  st.queueView = st.q ? null : st.view; st.queuedNext = null; }
 function syncQueue() {
   const pl = st.playlists.find(p => p.id === st.queueSource); if (!pl) return;
-  const curId = A().track && A().track.id, forced = st.forcedNext && st.nextI != null ? st.queue[st.nextI] : null;
-  st.queue = S.nextMode === "best" ? (st.mixPlan = bestOrder(orderPl(pl).map(t => t.id), curId)).order : orderPl(pl).map(t => t.id); st.queue = instSwap(st.queue); st.qi = curId ? st.queue.indexOf(curId) : -1;
-  if (st.qi < 0 && curId) { st.queue.unshift(curId); st.qi = 0; }
-  if (forced) { st.queue.splice(st.qi + 1, 0, forced); st.nextI = st.qi + 1; } else st.forcedNext = false;
+  rebuildQueue(orderPl(pl).map(t => t.id), S.nextMode === "best" && S.plSort !== "mine");
+}
+function rebuildQueue(ids, best) { // a new order for the songs still to come; the song playing, the one mixing in and a "Mix in next" pick stay put
+  const curId = A().track && A().track.id, liveId = mix ? st.queue[mix.nextI] : null, forced = st.forcedNext && st.nextI != null ? st.queue[st.nextI] : null;
+  let q = best ? (st.mixPlan = bestOrder(ids, curId)).order : ids; q = instSwap(q);
+  const pin = [liveId, forced].filter((x, i, a) => x && x !== curId && a.indexOf(x) === i);
+  q = q.filter(x => !pin.includes(x));
+  let qi = curId ? q.indexOf(curId) : -1; if (qi < 0 && curId) { q.unshift(curId); qi = 0; }
+  q.splice(qi + 1, 0, ...pin); st.queue = q; st.qi = qi;
+  if (mix && liveId) mix.nextI = q.indexOf(liveId, qi + 1);
+  if (forced) st.nextI = q.indexOf(forced, qi + 1); else st.forcedNext = false;
   computeNext();
+}
+function followMyOrder() { // the list playing was rearranged: auto mix follows the new order from the song playing on
+  if (st.queueSource) return syncQueue();
+  if (st.queueView !== "library" || !A().track) return;
+  const q = st.q; st.q = ""; const ids = viewTracks().filter(t => !t.bad).map(t => t.id); st.q = q;
+  rebuildQueue(ids, false);
 }
 function computeNext() {
   computeNextInner();
@@ -2482,6 +2546,7 @@ function computeNext() {
 }
 function computeNextInner() {
   if (st.forcedNext && st.nextI != null) return;
+  if (st.queuedNext) { const j = st.queue.indexOf(st.queuedNext, st.qi + 1); if (st.qi >= 0 && j > st.qi && st.queue[st.qi] !== st.queuedNext) { st.nextI = j; return; } st.queuedNext = null; }
   const n = st.queue.length; st.nextI = null;
   if (!n || st.qi < 0) return;
   const cur = st.tracks.get(st.queue[st.qi]);
@@ -2810,11 +2875,12 @@ function keyChip(t, ref) {
   const c = ref && ref.id !== t.id ? compat(ref.key, t.key) : null;
   return `<span class="dot ${c ? c.level : ""}" ${c ? `title="${esc(c.label)} with the song playing now"` : ""}></span><span class="chip" style="--h:${hueOf(t.key)}" title="${t.keyAuto ? "Detected automatically" : "From you or the file"}">${t.key}</span><small>${keyName(t.key)}</small>`;
 }
-function mixTagFor(prev, t, i) { // how this song comes in after the one above it
-  if (S.unmatched === "skip" && i >= mixOrderCache.chained) return `<span class="mixtag x">skipped</span>`;
+function mixTagFor(prev, t, i, mine) { // how this song comes in after the one above it
+  if (!mine && S.unmatched === "skip" && i >= mixOrderCache.chained) return `<span class="mixtag x">skipped</span>`;
   const sc = mixScore(prev, t); if (sc.ok) return `<span class="mixtag m">mix ${sc.pct}%</span>`;
   return mixMode(prev, t) === "ride" ? `<span class="mixtag r">tempo ride</span>` : `<span class="mixtag c">power cut</span>`;
 }
+const ORDERS = [["mix", "Mix", "Mix order"], ["bpm", "BPM", "By BPM"], ["alpha", "A–Z", "A to Z"], ["mine", "Mine", "My order"]];
 function renderList() {
   const pl = curPl(), list = viewTracks(), ref = A().track;
   if (st.view !== "library" && !pl) { st.view = "library"; }
@@ -2823,12 +2889,13 @@ function renderList() {
   const stats = `<div class="stats"><span class="stat songs"><b>${all.length.toLocaleString()}</b>song${all.length === 1 ? "" : "s"}</span><span class="stat time"><b>${fmtLong(totalTime(all))}</b>total time</span>${bpms.length ? `<span class="stat tempo"><b>${Math.round(Math.min(...bpms))}–${Math.round(Math.max(...bpms))}</b>BPM</span>` : ""}</div>`;
   const busy = `<div class="busy" id="busy" ${st.busy ? "" : "hidden"}><span>${esc(st.busy)}</span><button type="button" data-act="stopimport">Stop</button></div>`;
   let head = `<div class="vhead"><div class="titles"><h1 class="${pl ? "" : "tt"}">${esc(pl ? pl.name : "My DJ Library")}</h1>${stats}</div><div class="acts">`;
-  const ord = st.sortClicked && !pl ? "" : S.plSort, mixView = ord === "mix" && !st.q && all.length > 1;
+  const ord = st.sortClicked && !pl ? "" : S.plSort, mixView = ord === "mix" && !st.q && all.length > 1, mineView = ord === "mine" && !st.q && !st.sel && all.length > 1;
+  const favs = new Set((favPl() || { ids: [] }).ids), nextId = ref && st.nextI != null ? st.queue[st.nextI] : null;
   if (mixView) head += `<div class="mixctl">Beat-mix songs that match <select data-mixmin aria-label="Minimum mix match">${[96, 92, 88, 84, 80].map(v => `<option value="${v}" ${S.mixMin === v ? "selected" : ""}>${v}%+</option>`).join("")}</select> · the rest <select data-unmatched aria-label="Songs below the match"><option value="play" ${S.unmatched !== "skip" ? "selected" : ""}>play after</option><option value="skip" ${S.unmatched === "skip" ? "selected" : ""}>are skipped</option></select></div>`;
   if (pl) head += `<button class="btn ghost" type="button" data-act="renamepl">Rename</button><button class="btn ghost danger" type="button" data-act="delpl">Delete folder</button>`;
   head += `</div></div>`;
   // the list's header row: stays at the top while you scroll (sort, play, select, back to the top); it never runs off the screen
-  if (all.length && !st.sel) head += `<div class="listbar" role="toolbar" aria-label="Song order and play">${all.length > 1 ? `<div class="seg3" role="group" aria-label="Song order">${[["mix", "Mix"], ["bpm", "BPM"], ["alpha", "A–Z"]].map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}</div>` : ""}<button type="button" class="lb lb-play" data-act="playall">▶ Play</button><button type="button" class="lb" data-act="select">Select</button><button type="button" class="lb lb-top" data-act="totop" aria-label="Back to the top" title="Back to the top">↑</button></div>`;
+  if (all.length && !st.sel) head += `<div class="listbar" role="toolbar" aria-label="Song order and play">${all.length > 1 ? `<div class="seg3" role="group" aria-label="Song order">${ORDERS.map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}</div><select class="ordsel" data-plsel aria-label="Song order">${ORDERS.map(([k, , l]) => `<option value="${k}" ${ord === k ? "selected" : ""}>${l}</option>`).join("")}${ord ? "" : `<option value="" selected>Your sort</option>`}</select>` : ""}<button type="button" class="lb lb-play" data-act="playall">▶ Play</button><button type="button" class="lb" data-act="select">Select</button><button type="button" class="lb lb-top" data-act="totop" aria-label="Back to the top" title="Back to the top">↑</button></div>`;
   if (st.sel && list.length) {
     const n = st.sel.size, allOn = list.every(t => st.sel.has(t.id));
     head += `<div class="selbar"><span class="cnt">${n} selected</span>
@@ -2843,6 +2910,7 @@ function renderList() {
   if (flags) head = head.replace(/(<h1[^>]*>[^<]*<\/h1>)/, `$1<div class="flags">${flags}</div>`);
   if (st.dbNote === "blocked") head += `<div class="fixbar"><span>⏳ <b>Finishing an update.</b> Your songs are safe. If this stays, fully close ${FRAMED ? "the Claude app" : "the app"} (swipe it away in the app switcher) and open it again.</span></div>`;
   else if (st.dbNote && st.dbNote.startsWith("failed")) head += `<div class="fixbar"><span>⚠ This device isn't letting the app save right now (${esc(st.dbNote.slice(7))}). Songs you add will play until you close the app. ${FRAMED ? "Close the Claude app fully and reopen it, or use the Safari Home Screen app." : "Close the app fully and reopen it."}</span></div>`;
+  if (newVer) head += `<div class="fixbar"><span>✨ <b>Version ${esc(newVer)} is ready.</b> Update takes a second; your songs and folders stay.</span><button class="btn primary" type="button" data-act="update">Update now</button></div>`;
   const nBad = all.filter(t => t.bad).length;
   if (nBad) { const bad = all.filter(t => t.bad), names = bad.slice(0, 3).map(t => `“${esc(nm(t.title))}”`).join(", ") + (nBad > 3 ? ` and ${nBad - 3} more` : "");
     head += `<div class="fixbar"><span>⚠ ${nBad === 1 ? "This song is missing its audio on this device:" : `${nBad} songs are missing their audio on this device:`}<span class="bad-names">${names}</span></span><button class="btn primary" type="button" data-act="readd">Fix ${nBad === 1 ? "it" : "them"}</button><button class="btn ghost" type="button" data-act="badrm">Remove ${nBad === 1 ? "it" : "them"}</button></div>`; }
@@ -2864,8 +2932,8 @@ function renderList() {
     body = `<div class="list" role="list"><div class="lhead"><span>#</span>${sh("title", "Title / Artist")}${sh("bpm", "BPM")}${sh("key", "Key")}${sh("time", "Time", "h-time")}<span></span></div>`
       + list.map((t, i) => (mixView && i === mixOrderCache.chained && i < list.length && i > 0 ? `<div class="mixsep">${S.unmatched === "skip" ? `Below ${S.mixMin}% match: these won't play in auto mix` : `Below ${S.mixMin}%: these play after, highest BPM first, with tempo rides and power cuts`}</div>` : "")
         + `<div class="row ${t.isInst ? "inst" : ""} ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
-        ${st.sel ? `<input class="pick" type="checkbox" data-act="pick" ${st.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}">` : `<button class="r-n" type="button" data-act="play" aria-label="Play ${esc(t.title)}"><span>${i + 1}</span>${ICON_PLAY}</button>`}
-        <button class="r-t" type="button" data-act="${st.sel ? "pick" : "play"}"><b>${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${S.clean && scanned(t) ? (t.explicit.length ? `<span class="ex" title="${t.explicit.length} cuss words filtered">E ${t.explicit.length}</span>` : `<span class="ex ok" title="Checked: no cuss words">✓</span>`) : S.clean && !t.isInst && S.cleanUnscanned !== "asis" ? `<span class="ex wait" title="Not checked for cuss words yet: Clean mode plays it with the vocals taken out">not checked</span>` : ""}</b><small><span class="mt num dur" title="Length">${fmt(t.duration)}</span>${mixView && i > 0 ? mixTagFor(list[i - 1], t, i) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}</small></button>
+        ${st.sel ? `<input class="pick" type="checkbox" data-act="pick" ${st.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}">` : mineView ? `<span class="r-n grip" role="button" aria-label="Drag to move ${esc(t.title)}" title="Drag to move"><span>${i + 1}</span><i>≡</i></span>` : `<button class="r-n" type="button" data-act="play" aria-label="Play ${esc(t.title)}"><span>${i + 1}</span>${ICON_PLAY}</button>`}
+        <button class="r-t" type="button" data-act="${st.sel ? "pick" : "tap"}"><b>${favs.has(t.id) ? `<span class="fav" title="Favorite">♥</span>` : ""}${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${S.clean && scanned(t) ? (t.explicit.length ? `<span class="ex" title="${t.explicit.length} cuss words filtered">E ${t.explicit.length}</span>` : `<span class="ex ok" title="Checked: no cuss words">✓</span>`) : S.clean && !t.isInst && S.cleanUnscanned !== "asis" ? `<span class="ex wait" title="Not checked for cuss words yet: Clean mode plays it with the vocals taken out">not checked</span>` : ""}</b><small>${t.id === nextId ? `<span class="nexttag">${mix ? "MIXING IN" : "NEXT"}</span>` : ""}<span class="mt num dur" title="Length">${fmt(t.duration)}</span>${(mixView || mineView) && i > 0 ? mixTagFor(list[i - 1], t, i, mineView) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}</small></button>
         <div class="r-b ${t.bpm ? "" : "none"}" style="--bh:${t.bpm ? Math.round(clamp(230 - (t.bpm - 70) * 2.6, 0, 230)) : 200}" title="${t.bpmAuto ? "Detected automatically" : "From you or the file"}">${t.bpm ? Math.round(t.bpm) : "–"}</div>
         <div class="r-k">${keyChip(t, ref)}</div>
         <div class="r-time">${fmt(t.duration)}</div>
@@ -2891,7 +2959,7 @@ function renderPlayerText() {
   decks.forEach(d => {
     const el = $("#deck" + d.i), t = d.track;
     el.classList.toggle("live", !!t); el.classList.toggle("act", d === A());
-    el.querySelector(".dt").innerHTML = t ? `<b class="${t.isInst ? "inst" : ""}">${esc(nm(t.title))}</b><small>${esc(nm(t.artist))}</small>` : `<b>Empty</b><small></small>`;
+    el.querySelector(".dt").innerHTML = t ? `<b class="${t.isInst ? "inst" : ""}" ${d === A() ? `data-act="nowfind" role="button" tabindex="0" title="Show it in the list"` : ""}>${esc(nm(t.title))}</b><small>${esc(nm(t.artist))}</small>${d === A() ? `<span class="dact"><button type="button" class="${isFav(t.id) ? "on" : ""}" data-act="nowfav" aria-label="${isFav(t.id) ? "Take out of Favorites" : "Add to Favorites"}" aria-pressed="${isFav(t.id)}">♥</button><button type="button" data-act="nowmenu" aria-label="More for the song playing">${ICON_MORE}</button></span>` : ""}` : `<b>Empty</b><small></small>`;
   });
   const up = $("#upnext"), cur = A().track, nt = st.nextI != null ? st.tracks.get(st.queue[st.nextI]) : null;
   if (!cur) { up.innerHTML = `<span class="lab">Up next</span><div class="what"><span>Pick a song or press play.</span></div>`; return; }
@@ -3018,7 +3086,7 @@ function toggleVocals() {
   toast(S.novocals ? (n ? `Instrumental only: songs with a real instrumental (${n}, in orange) play that; the rest play with the vocals taken out.` : "Instrumental only: every song and mix plays without vocals.") : "Vocals back on.", 6000);
 }
 function toggleClean() {
-  S.clean = !S.clean; saveS(); renderVox(); voxFrame(); renderAll();
+  S.clean = !S.clean; saveS(); renderVox(); voxFrame(); renderAll(); prepBgClean(A());
   if (!S.clean) return toast("Clean mode off.");
   const all = [...st.tracks.values()], n = all.filter(scanned).length;
   toast(n === all.length ? "Clean mode on: cuss words are filtered out." : `Clean mode on. ${n} of ${all.length} songs have been checked for cuss words; the others play without vocals. Menu → Clean mode for details.`, 7000);
@@ -3034,9 +3102,9 @@ function cleanSheet() {
       <div class="opt"><span>Songs not checked yet</span><div class="seg">${opt("cleanUnscanned", "novocal", "Play without vocals")}${opt("cleanUnscanned", "asis", "Play as they are")}</div></div>
       <div class="tips"><div><b>${chk.length} of ${all.length}</b> songs checked${chk.length ? `, <b>${hits.length}</b> with cuss words (${hits.reduce((n, t) => n + t.explicit.length, 0)} words filtered)` : ""}.</div>
       <div><b>How songs get checked:</b> your Mac separates each song's vocals, listens to every word (speech recognition) and records the exact time of each cuss word inside the song file in iCloud Drive. Add those files here and Clean mode knows exactly when to cut. Songs not checked yet play without vocals while Clean mode is on, so nothing slips through. Songs with "Clean" or "Radio Edit" in the title count as checked.</div>
-      <div><b>Screen locked on iPhone:</b> flagged words go silent, but "Vocals off" only works while the app is open.</div></div>
+      <div><b>Screen locked, or in another app:</b> the music keeps going, still clean. Each song plays from a copy with its flagged words made silent; a song that can't be cleaned that way (not checked yet, or not an MP3) plays as its instrumental, or is skipped until you come back. "Vocals off" only works while the app is open.</div></div>
     </div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`, sh => sh.querySelectorAll("[data-cs]").forEach(b => b.addEventListener("click", () => {
-      const [k, v] = b.dataset.cs.split(":"); S[k] = v === "true" ? true : v === "false" ? false : v; saveS(); renderVox(); voxFrame(); renderAll(); closeSheet(); cleanSheet();
+      const [k, v] = b.dataset.cs.split(":"); S[k] = v === "true" ? true : v === "false" ? false : v; saveS(); renderVox(); voxFrame(); renderAll(); prepBgClean(A()); closeSheet(); cleanSheet();
     })));
 }
 
@@ -3089,14 +3157,17 @@ function planSheet() {
     const lab = { beat: `<span class="tx bm" title="Match ${sc && sc.pct}%">beat mix ${prev ? Math.round(prev.bpm || 0) : ""}</span>`, ride: `<span class="tx bm">ride ${Math.round(prev && prev.bpm || 0)}→${Math.round(t.bpm || 0)}</span>`,
       cut: `<span class="tx fd">power cut</span>`, fade: `<span class="tx fd">fade</span>` };
     const how = !md ? `<span class="tx bm">${A().track && A().track.id === t.id ? "now" : "first"}</span>` : lab[md];
-    rows += `<div class="pr ${A().track && A().track.id === t.id ? "now" : ""}"><span class="pn">${i + 1}</span><div><b>${t.bad ? "⚠ " : ""}${esc(nm(t.title))}</b><small>${t.bpm ? Math.round(t.bpm) + " BPM" : "BPM ?"} · ${t.key || "key ?"}${t.energy ? " · ⚡" + t.energy : ""}${t.artist ? " · " + esc(nm(t.artist)) : ""}</small></div>${how}</div>`;
+    const isNow = A().track && A().track.id === t.id, isNext = A().track && st.nextI != null && st.queue[st.nextI] === t.id;
+    rows += `<div class="pr ${isNow ? "now" : ""}" ${!isNow && A().track ? `data-pid="${esc(t.id)}" role="button" tabindex="0"` : ""}><span class="pn">${i + 1}</span><div><b>${isNext ? `<span class="nexttag">${mix ? "MIXING IN" : "NEXT"}</span>` : ""}${t.bad ? "⚠ " : ""}${esc(nm(t.title))}</b><small>${t.bpm ? Math.round(t.bpm) + " BPM" : "BPM ?"} · ${t.key || "key ?"}${t.energy ? " · ⚡" + t.energy : ""}${t.artist ? " · " + esc(nm(t.artist)) : ""}</small></div>${how}</div>`;
   });
   const checkList = lastMixInfo && lastMixInfo.checks ? `<div class="checks">${lastMixInfo.checks.map(([k, ok, note]) => `<div class="ck ${ok ? "ok" : "warn"}"><b>${ok ? "✓" : "•"} ${esc(k)}</b><span>${esc(note)}</span></div>`).join("")}</div>` : "";
   const L = lastMixInfo, last = L ? `<p style="font-size:13px">Last mix: <b>${esc(L.mode === "cut" ? "power cut" : L.mode === "ride" ? `tempo ride ${L.N0}→${L.N}` : "beat mix")}</b> locked at <b>${L.N} BPM</b>${L.mode !== "cut" ? ` · kick/hat alignment ${L.lag >= 0 ? "+" : ""}${L.lag} ms (match ${L.lagQ}×)` : ""}${L.gB > 1.01 ? ` · intro lifted ${Math.round(20 * Math.log10(L.gB))} dB` : ""}${L.rhythm != null ? ` · rhythm match ${L.rhythm}%${L.rhythmK ? ` (moved ${L.rhythmK} beat${L.rhythmK === 1 ? "" : "s"} to line up the bars)` : ""}` : ""}${L.moves && L.moves.length ? ` · moves: ${esc(L.moves.join(", "))}` : ""}.</p>` : "";
   openSheet(`<h2>Auto mix plan</h2>
     <p>${S.nextMode === "best" ? `Best mixes first: songs that match at ${S.mixMin}% or better chain together beat on beat. The rest play after, highest BPM first.` : S.nextMode === "shuffle" ? "Shuffle is on, so the order is random. Turn off Shuffle for best mixes first." : "Playing in list order."}
     <b style="color:var(--green)">${n.beat} beat mix${n.beat === 1 ? "" : "es"}</b> · <b style="color:var(--green)">${n.ride} tempo ride${n.ride === 1 ? "" : "s"}</b> · <b style="color:var(--gold)">${n.cut} power cut${n.cut === 1 ? "" : "s"}</b>${n.fade ? ` · ${n.fade} fade${n.fade === 1 ? "" : "s"}` : ""}.</p>${last}${checkList}
-    <div class="plan">${rows}</div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`);
+    ${A().track ? `<p style="font-size:13px"><b>Tap any song below to mix it in next.</b> Nothing skips: the song playing finishes its mix into it.</p>` : ""}
+    <div class="plan">${rows}</div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`,
+    sh => sh.querySelectorAll("[data-pid]").forEach(r => r.addEventListener("click", () => { closeSheet(); playNext(r.dataset.pid); })));
 }
 
 function hookSheet() {
@@ -3146,18 +3217,23 @@ async function deleteSelected(fromFolderOnly) {
 }
 
 /* ---------- background play ----------
-   Macs keep the full mixer running in the background. Phones can stop a web page's mixer when the screen locks or you
-   switch apps; when that happens the music hands off to a plain player that keeps going song after song, and the full
-   mixer (blends, effects, drops) takes back over when you return to the app. */
+   Macs keep the full mixer running in the background. Phones stop a web page's mixer soon after you switch apps or lock
+   the screen (and freeze its timers), so on a phone the music hands off to a plain player the moment you leave: it keeps
+   going song after song, and the full mixer (blends, effects, drops) takes back over when you return to the app.
+   Clean mode: iPhone ignores a page's volume control in the background, so the plain player can't duck a word. It plays a
+   copy of the song with the flagged words already silent inside the file instead (made ahead, while the song plays). */
 const bgEl = new Audio(); bgEl.playsInline = true; bgEl.preload = "auto";
-let bgMode = false, bgUnlocked = false;
+let bgMode = false, bgUnlocked = false, bgCur = null, bgNext = null, bgBusy = false;
 document.addEventListener("pointerdown", () => { // phones only let a player start after a tap, so warm this one up
-  if (bgUnlocked) return; bgUnlocked = true; ensureCtx();
+  if (bgUnlocked) return; bgUnlocked = true; ensureCtx(); playbackSession();
   if (!bgEl.src) { bgEl.src = silentUrl; bgEl.play().then(() => bgEl.pause()).catch(() => {}); }
 }, { capture: true });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { setTimeout(checkBg, 700); setTimeout(checkBg, 2500); }
-  else if (bgMode) leaveBg();
+  if (document.hidden) {
+    // a phone: hand off right now, while the page can still start the player (a check a second later often never runs)
+    if (PHONE && st.playing && !bgMode && !(recorder && recorder.state === "recording")) enterBg();
+    else { setTimeout(checkBg, 700); setTimeout(checkBg, 2500); }
+  } else if (bgMode) leaveBg();
 });
 function checkBg() {
   if (!document.hidden || bgMode || !st.playing || !actx) return;
@@ -3166,35 +3242,148 @@ function checkBg() {
   if (recorder && recorder.state === "recording") toast("Recording paused while the app was in the background. Keep the app open while you record.");
   enterBg();
 }
+const bgCleanNeeded = t => !!(S.clean && !S.novocals && t && !t.isInst && (scanned(t) ? t.explicit.length : S.cleanUnscanned !== "asis"));
+const bgStart = t => { const s = t.cueIn ?? t.autoIn ?? 0; return s > 0 && s < (t.duration || 0) - 5 ? s : 0; };
+const bgEnd = t => Math.min(bgEl.duration || Infinity, t.cueOut ?? t.autoOut ?? Infinity);
+async function bgSource(t) { // what the plain player plays for this song: {url, track, own}, or null if Clean mode can't make it clean
+  if (!bgCleanNeeded(t)) { const b = await audioBlob(t.id); return b && b.size ? { url: URL.createObjectURL(b), track: t, own: true } : null; }
+  if (scanned(t)) { // its flagged words silenced inside the MP3 itself
+    try { const b = await audioBlob(t.id), u = b && b.size && mp3Silence(await b.arrayBuffer(), t.explicit); if (u) return { url: URL.createObjectURL(new Blob([u], { type: "audio/mpeg" })), track: t, own: true }; } catch (e) {}
+  }
+  const it = instMap().get(t.fileName); // not checked, or not an MP3: its spotless instrumental, if you have it
+  if (it) { const b = await audioBlob(it.id).catch(() => null); if (b && b.size) return { url: URL.createObjectURL(b), track: it, own: true }; }
+  return null;
+}
+function dropBgSrc(d) { if (d.bgSrc && d.bgSrc.own && d.bgSrc.url) URL.revokeObjectURL(d.bgSrc.url); d.bgSrc = null; }
+async function prepBgClean(d) { // a phone in Clean mode: the clean copy of the song playing, ready for the moment you leave the app
+  const t = d.track; if (!PHONE || !t || !bgCleanNeeded(t) || (d.bgSrc && d.bgSrc.for === t)) return;
+  const src = await bgSource(t).catch(() => null);
+  if (d.track !== t || (d.bgSrc && d.bgSrc.for === t)) { if (src && src.own) URL.revokeObjectURL(src.url); return; }
+  dropBgSrc(d); d.bgSrc = src ? Object.assign(src, { for: t }) : { for: t, none: true };
+}
+function seekBg(pos) { const go = () => { try { if (pos > 0.3) bgEl.currentTime = pos; } catch (e) {} }; if (bgEl.readyState >= 1) go(); else bgEl.addEventListener("loadedmetadata", go, { once: true }); }
+function bgSwap(src, pos) {
+  const old = bgCur; bgCur = src; bgEl.src = src.url; bgEl.playbackRate = 1; seekBg(pos); applyVol();
+  if (old && old.own && old.url !== src.url) setTimeout(() => URL.revokeObjectURL(old.url), 4000);
+}
 async function enterBg() {
+  if (bgMode) return;
   if (mix && !mix.pending) finishMix(); else if (mix) cancelMix();
-  const d = A(); if (!d.track || !d.url) return;
+  const d = A(), t = d.track; if (!t || !d.url) return;
+  let src = null;
+  if (!bgCleanNeeded(t)) src = { url: d.url, track: t, own: false };
+  else if (d.bgSrc && d.bgSrc.for === t && d.bgSrc.url) { src = d.bgSrc; d.bgSrc = null; }
   bgMode = true; const pos = d.el.currentTime; d.el.pause();
-  bgEl.src = d.url; bgEl.playbackRate = 1; applyVol();
-  try { bgEl.currentTime = pos; } catch (e) {}
-  try { await bgEl.play(); } catch (e) { bgMode = false; }
+  const o = B(); // let the other deck go: a phone gives an app in the background little memory
+  if (o.track) { o.el.pause(); setParam(o.gain.gain, 0); if (o.bp && o.el === o.bp) o.bp.load(null); o.track = null; } prep = null;
+  if (!src && !(d.bgSrc && d.bgSrc.none)) { src = await bgSource(t).catch(() => null); if (!bgMode) return; }
+  if (!src) { pushHistory(t.id, pos); st.played.add(t.id); return bgAdvance(true); } // Clean mode can't make this one clean here: on to the next
+  if (src.track !== t) d.track = src.track;
+  bgSwap(src, src.track === t ? pos : bgStart(src.track));
+  try { await bgEl.play(); } catch (e) { bgMode = false; bgCur = null; try { await d.el.play(); } catch (e2) {} return; }
+  mediaMeta(); bgPrepNext();
 }
-async function bgAdvance() {
-  if (!bgMode) return;
-  if (st.nextI == null) { st.playing = false; renderTransport(); return; }
-  const i = st.nextI, t = st.tracks.get(st.queue[i]), d = A();
-  try { await loadDeck(d, t); } catch (e) { st.queue.splice(i, 1); computeNext(); return bgAdvance(); }
-  bgEl.src = d.url; try { bgEl.currentTime = startPoint(t, d); } catch (e) {}
-  st.qi = i; st.played.add(t.id); st.forcedNext = false; computeNext(); mediaMeta();
-  bgEl.play().catch(() => {});
+async function bgPrepNext() { // the next song, ready while this one plays, so the switch is instant
+  if (!bgMode || st.nextI == null) return; const id = st.queue[st.nextI], t = st.tracks.get(id); if (!t || (bgNext && bgNext.id === id)) return;
+  if (bgNext && bgNext.src && bgNext.src.own) URL.revokeObjectURL(bgNext.src.url);
+  bgNext = { id, src: null }; const src = await bgSource(t).catch(() => null);
+  if (!bgMode || !bgNext || bgNext.id !== id) { if (src && src.own) URL.revokeObjectURL(src.url); return; }
+  bgNext.src = src; bgNext.ready = true;
 }
-bgEl.addEventListener("ended", bgAdvance);
+async function bgAdvance(skipHistory) {
+  if (!bgMode || bgBusy) return; bgBusy = true;
+  try {
+    const d = A();
+    for (let tries = 0; tries < 12; tries++) {
+      if (st.nextI == null) { bgEl.pause(); st.playing = false; renderTransport(); mediaMeta(); return; }
+      const i = st.nextI, id = st.queue[i], t = st.tracks.get(id);
+      let src = bgNext && bgNext.id === id && bgNext.ready ? bgNext.src : undefined; bgNext = null;
+      if (src === undefined) src = t ? await bgSource(t).catch(() => null) : null;
+      if (!bgMode) { if (src && src.own) URL.revokeObjectURL(src.url); return; }
+      if (!src) { st.qi = i; st.played.add(id); st.forcedNext = false; computeNext(); continue; } // can't play it clean (or its audio is gone): the one after
+      if (d.track && !skipHistory) pushHistory(d.track.id, null); skipHistory = false;
+      if (d.bp && d.el === d.bp) d.bp.load(null); // free the full mixer's copy: the plain player has it now
+      d.track = src.track; d.light = true; d.plan = null;
+      bgSwap(src, bgStart(src.track));
+      st.qi = i; st.played.add(id); st.forcedNext = false; computeNext(); mediaMeta(); renderAll();
+      bgEl.play().catch(() => {}); bgPrepNext(); return;
+    }
+    bgEl.pause(); st.playing = false; renderTransport();
+  } finally { bgBusy = false; }
+}
+async function bgBack() { // ⏮ on the lock screen or headphones while the phone plays in the background: the previous song, from the top
+  if (bgBusy) return; const d = A(), cur = d.track, prev = popPrev(cur);
+  if (!prev) { try { bgEl.currentTime = cur ? bgStart(cur) : 0; } catch (e) {} return; }
+  bgBusy = true;
+  try {
+    const at = requeuePrev(prev, cur), t = st.tracks.get(prev.id), src = await bgSource(t).catch(() => null);
+    if (!bgMode || !src) return;
+    if (d.bp && d.el === d.bp) d.bp.load(null);
+    d.track = src.track; d.light = true; d.plan = null; bgNext = null;
+    bgSwap(src, bgStart(src.track));
+    st.qi = at; st.played.add(t.id); st.forcedNext = false; computeNext(); mediaMeta(); renderAll();
+    bgEl.play().catch(() => {}); bgPrepNext();
+  } finally { bgBusy = false; }
+}
+bgEl.addEventListener("ended", () => bgAdvance());
 bgEl.addEventListener("timeupdate", () => { // skip long silent endings while in the background
-  if (bgMode && S.automix && A().track && bgEl.currentTime >= endPoint(A()) - 0.25 && bgEl.currentTime < bgEl.duration - 0.5) bgAdvance();
+  const t = A().track; if (!bgMode || !S.automix || !t || !bgCur) return;
+  if (bgEl.currentTime >= bgEnd(t) - 0.25 && bgEl.currentTime < bgEl.duration - 0.5) bgAdvance();
+  else if (!bgNext) bgPrepNext();
 });
 async function leaveBg() {
+  if (!bgMode) return;
+  const d = A();
+  for (let i = 0; i < 3 && bgCur; i++) { // the full mixer needs the whole song: load it while the plain player keeps going
+    const want = bgCur.track; if (!d.light && d.track === want) break;
+    try { await loadDeck(d, want); } catch (e) { break; }
+    if (document.hidden || !bgMode) return; // left again before it was ready: stay with the plain player
+    if (bgCur && bgCur.track === want) { d.light = false; break; }
+  }
   const pos = bgEl.currentTime, was = !bgEl.paused; bgEl.pause(); bgMode = false;
-  const d = A(); if (!d.track) return;
+  if (bgNext && bgNext.src && bgNext.src.own) URL.revokeObjectURL(bgNext.src.url); bgNext = null;
+  if (bgCur && bgCur.own) { const u = bgCur.url; setTimeout(() => URL.revokeObjectURL(u), 4000); } bgCur = null;
+  if (!d.track) return;
   ensureCtx(); await actx.resume().catch(() => {});
   d.el.playbackRate = d.el instanceof BufferPlayer && d.track.bpm ? Math.round(d.track.bpm) / d.track.bpm : 1; setParam(d.gain.gain, 1); resetFx(d); d.plan = null;
   try { d.el.currentTime = pos; } catch (e) {}
   if (was) { try { await d.el.play(); st.playing = true; } catch (e) { st.playing = false; } }
-  renderAll(); mediaMeta();
+  renderAll(); mediaMeta(); prepBgClean(d);
+}
+
+/* Clean mode, screen locked: every MP3 frame (about 26 ms of sound) carries a "global gain" number; setting it to 0
+   silences that frame without touching anything else, so a flagged word goes quiet with no decoding or re-encoding
+   (about 10 ms for a whole song). Returns the cleaned copy, or null if this isn't an MP3 it can read. */
+const MP3_BR = [[0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]];
+const MP3_SR = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+function mp3Silence(buf, spans, pre = 0.15, post = 0.12) {
+  const u = new Uint8Array(buf.slice(0)), n = u.length;
+  const hdr = q => q + 2 < n && u[q] === 0xff && (u[q + 1] & 0xe6) === 0xe2 && (u[q + 1] >> 3 & 3) !== 1 && (u[q + 2] >> 4) !== 0 && (u[q + 2] >> 4) !== 15 && (u[q + 2] >> 2 & 3) !== 3;
+  const setBits = (byte, bit, len, v) => { for (let i = 0; i < len; i++) { const b = bit + i, at = byte + (b >> 3), m = 0x80 >> (b & 7); if (v >> (len - 1 - i) & 1) u[at] |= m; else u[at] &= ~m; } };
+  const crc16 = (from, to, c) => { for (let i = from; i < to; i++) { c ^= u[i] << 8; for (let j = 0; j < 8; j++) c = c & 0x8000 ? ((c << 1) ^ 0x8005) & 0xffff : (c << 1) & 0xffff; } return c; };
+  let p = 0, k = 0, first = true, hits = 0;
+  if (u[0] === 0x49 && u[1] === 0x44 && u[2] === 0x33) p = 10 + ((u[6] & 127) << 21 | (u[7] & 127) << 14 | (u[8] & 127) << 7 | (u[9] & 127)) + (u[5] & 0x10 ? 10 : 0);
+  while (p + 4 <= n) {
+    if (!hdr(p)) { p++; continue; }
+    const ver = u[p + 1] >> 3 & 3, v1 = ver === 3, crc = !(u[p + 1] & 1), sr = MP3_SR[ver][u[p + 2] >> 2 & 3], br = MP3_BR[v1 ? 0 : 1][u[p + 2] >> 4] * 1000;
+    const size = Math.floor((v1 ? 144 : 72) * br / sr) + (u[p + 2] >> 1 & 1), spf = v1 ? 1152 : 576, mono = u[p + 3] >> 6 === 3, nch = mono ? 1 : 2;
+    if (p + size > n) break;
+    if (p + size + 4 <= n && !hdr(p + size)) { p++; continue; } // a real frame is followed by another one
+    const side = p + 4 + (crc ? 2 : 0), sideLen = v1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+    if (first) { // the Xing / Info / VBRI frame at the start holds no music
+      first = false; const tag = String.fromCharCode(...u.subarray(side + sideLen, side + sideLen + 4)), vbri = String.fromCharCode(...u.subarray(p + 36, p + 40));
+      if (tag === "Xing" || tag === "Info" || vbri === "VBRI") { p += size; continue; }
+    }
+    const t0 = k * spf / sr, t1 = (k + 1) * spf / sr;
+    if (spans.some(([a, b]) => t1 > a - pre && t0 < b + post)) {
+      const base = v1 ? 9 + (mono ? 5 : 3) + 4 * nch : 8 + (mono ? 1 : 2), per = v1 ? 59 : 63, grs = v1 ? 2 : 1;
+      for (let g = 0; g < grs; g++) for (let c = 0; c < nch; c++) setBits(side, base + (g * nch + c) * per + 21, 8, 0);
+      if (crc) { const c = crc16(side, side + sideLen, crc16(p + 2, p + 4, 0xffff)); u[p + 4] = c >> 8; u[p + 5] = c & 255; }
+      hits++;
+    }
+    k++; p += size;
+  }
+  return hits && k > 100 ? u : null;
 }
 
 /* ---------- lock screen / headphone controls ---------- */
@@ -3210,7 +3399,7 @@ try {
   navigator.mediaSession.setActionHandler("play", () => { if (!st.playing) togglePlay(); });
   navigator.mediaSession.setActionHandler("pause", () => { if (st.playing) togglePlay(); });
   navigator.mediaSession.setActionHandler("nexttrack", () => bgMode ? bgAdvance() : S.automix ? mixNow() : skipNext());
-  navigator.mediaSession.setActionHandler("previoustrack", skipPrev);
+  navigator.mediaSession.setActionHandler("previoustrack", () => skipPrev());
 } catch (e) {}
 
 /* ---------- wake lock ---------- */
@@ -3247,19 +3436,139 @@ function confirmSheet(title, text, label, fn) {
     s => s.querySelector("#ok").addEventListener("click", () => { closeSheet(); fn(); }));
 }
 function rowMenu(id) {
-  const t = st.tracks.get(id), pl = curPl();
-  const items = [["Play now", () => playFromView(id)], ["Play next", () => playNext(id)], ["Add to folder…", () => addToPlaylist(id)], ["Edit tempo, key and cue points", () => editTrack(id)]];
-    if (pl) items.push(["Remove from this folder", () => removeFromPl(id)]);
+  const t = st.tracks.get(id), pl = curPl(), live = A().track, mine = S.plSort === "mine" && !st.sortClicked && !st.q;
+  const items = live && live.id !== id ? [["Mix in next", () => playNext(id), "go"], ["Play now", () => playFromView(id)]] : [["Play now", () => playFromView(id)]];
+  items.push([isFav(id) ? "♥ Take out of Favorites" : "♥ Add to Favorites", () => toggleFav(id)], ["Add to folder…", () => addToPlaylist(id)]);
+  if (mine) items.push(["Move to the top", () => moveSong(id, 0)], ["Move to the bottom", () => moveSong(id, Infinity)]);
+  items.push(["Edit tempo, key and cue points", () => editTrack(id)]);
+  if (pl) items.push([`Remove from “${pl.name}”`, () => removeFromPl(id)]);
   items.push(["Select several songs to delete…", () => { startSelect(); st.sel.add(id); renderList(); }]);
-  items.push(["Delete from library", () => confirmSheet("Delete song?", `“${t.title}” will be removed from this device and from every folder.`, "Delete", () => deleteTrack(id)), "danger"]);
+  items.push(["Delete from library", () => askDelete(id), "danger"]);
   menuSheet(t.title, items);
 }
-function playFromView(id) { const ids = viewTracks().map(t => t.id); if (S.nextMode === "best") return hardPlay(queueBest(ids, id)); setQueue(ids); hardPlay(ids.indexOf(id)); }
-function playNext(id) {
+function songTap(id) { // a song tapped while the music plays: blend it in next (nothing skips), or play it right now
+  const cur = A().track;
+  if (cur && cur.id === id) return nowSheet();
+  if (!cur || !st.playing) return playFromView(id);
+  const t = st.tracks.get(id); if (!t) return;
+  menuSheet(nm(t.title), [["Mix in next", () => playNext(id), "go"], ["Play now", () => playFromView(id)], ["More…", () => rowMenu(id)]]);
+}
+function playFromView(id) { const ids = viewTracks().map(t => t.id); if (S.nextMode === "best" && S.plSort !== "mine") return hardPlay(queueBest(ids, id)); setQueue(ids); hardPlay(Math.max(0, st.queue.indexOf(instSwap([id])[0]))); }
+function playNext(id) { // "Mix in next": auto mix blends into this song after the one playing; nothing skips
   if (!A().track) return playFromView(id);
-  const t = st.tracks.get(id);
-  st.queue.splice(st.qi + 1, 0, id); st.nextI = st.qi + 1; st.forcedNext = true; st.played.delete(id);
-  renderPlayerText(); toast(`“${t.title}” plays next.`);
+  const t = st.tracks.get(id); if (!t) return;
+  if (A().track.id === id) return toast("That's the song playing now.");
+  const liveId = mix ? st.queue[mix.nextI] : null;
+  if (liveId === id) return toast(`“${nm(t.title)}” is mixing in right now.`);
+  st.queue = st.queue.slice(0, st.qi + 1).concat(st.queue.slice(st.qi + 1).filter(x => x !== id)); // never twice
+  let at = st.qi + 1;
+  if (liveId) { const j = st.queue.indexOf(liveId, st.qi + 1); if (j >= 0) { mix.nextI = j; at = j + 1; } }
+  st.queue.splice(at, 0, id); st.played.delete(id); st.queuedNext = id;
+  if (!liveId) { st.nextI = at; st.forcedNext = true; }
+  computeNext(); renderPlayerText(); keepScroll(renderList);
+  toast(liveId ? `“${nm(t.title)}” mixes in after this mix.` : `“${nm(t.title)}” mixes in next.`, 3000);
+}
+function keepScroll(fn) { const c = $("#content"), y = c.scrollTop; fn(); c.scrollTop = y; }
+
+/* ---------- your own order ("Mine"): drag a song by its handle, or Move to the top / bottom ---------- */
+function setOrder(k) {
+  if (k === "mine") { // starts from the order on screen now, so you only move the songs you want to
+    const pl = curPl(), q = st.q; st.q = ""; const shown = viewTracks().map(t => t.id); st.q = q;
+    if (pl && !pl.mine) { const on = new Set(shown); pl.ids = shown.concat(pl.ids.filter(x => !on.has(x))); pl.mine = 1; dbPut("playlists", pl).catch(() => {}); }
+    if (!pl && !st.libOrder) { st.libOrder = shown; lsSet("cb.libOrder", shown); }
+  }
+  S.plSort = k; st.sortClicked = false; saveS(); followMyOrder(); renderAll();
+  if (k === "mine") toast("Your order: drag a song by its ≡ handle to move it, or use ⋯ → Move to the top. Auto mix plays them in this order.", 7000);
+}
+function moveSong(id, to) {
+  const pl = curPl(), q = st.q; st.q = ""; const ids = viewTracks().map(t => t.id); st.q = q;
+  const from = ids.indexOf(id); if (from < 0) return;
+  ids.splice(from, 1); ids.splice(clamp(to, 0, ids.length), 0, id);
+  if (pl) { const on = new Set(ids); pl.ids = ids.concat(pl.ids.filter(x => !on.has(x))); pl.mine = 1; dbPut("playlists", pl).catch(() => {}); }
+  else { st.libOrder = ids; lsSet("cb.libOrder", ids); }
+  followMyOrder(); renderPlayerText(); keepScroll(renderList);
+}
+let drag = null;
+document.addEventListener("pointerdown", e => {
+  const g = e.target.closest && e.target.closest("#content .grip"); if (!g || drag) return;
+  e.preventDefault();
+  const c = $("#content"), row = g.closest(".row"), rows = [...c.querySelectorAll(".row")], i = rows.indexOf(row);
+  const y0 = c.scrollTop, mids = rows.map(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2 + y0; });
+  drag = { c, row, rows, i, mids, h: row.getBoundingClientRect().height, y: e.clientY, sy: e.clientY, y0, to: i, id: row.dataset.id };
+  try { g.setPointerCapture(e.pointerId); } catch (x) {}
+  row.classList.add("dragging"); requestAnimationFrame(dragTick);
+});
+function dragLayout() {
+  const d = drag, dy = d.y - d.sy + d.c.scrollTop - d.y0, me = d.mids[d.i] + dy;
+  let to = 0; d.mids.forEach((m, k) => { if (k !== d.i && m < me) to++; }); d.to = to;
+  d.row.style.transform = `translateY(${dy}px)`;
+  d.rows.forEach((r, k) => { if (k === d.i) return; const s = d.i < to && k > d.i && k <= to ? -d.h : d.i > to && k >= to && k < d.i ? d.h : 0; r.style.transform = s ? `translateY(${s}px)` : ""; });
+}
+function dragTick() { // near the top or bottom edge the list scrolls by itself
+  if (!drag) return; const b = drag.c.getBoundingClientRect(), edge = 70;
+  const v = drag.y < b.top + edge ? -Math.ceil((b.top + edge - drag.y) / 5) : drag.y > b.bottom - edge ? Math.ceil((drag.y - b.bottom + edge) / 5) : 0;
+  if (v) drag.c.scrollTop += v;
+  dragLayout(); requestAnimationFrame(dragTick);
+}
+document.addEventListener("pointermove", e => { if (drag) { drag.y = e.clientY; e.preventDefault(); } }, { passive: false });
+function dragEnd() {
+  if (!drag) return; const d = drag; drag = null;
+  d.rows.forEach(r => { r.style.transform = ""; }); d.row.classList.remove("dragging");
+  if (d.to !== d.i) { moveSong(d.id, d.to); const t = st.tracks.get(d.id); toast(`Moved “${nm(t ? t.title : "")}” to number ${d.to + 1}.`, 2000); }
+}
+document.addEventListener("pointerup", dragEnd); document.addEventListener("pointercancel", dragEnd);
+
+/* ---------- Favorites, and the song playing now ---------- */
+var FAV = "Favorites"; // var: the list and player can draw before this line runs
+const favPl = () => st.playlists.find(p => p.name === FAV);
+const isFav = id => { const p = favPl(); return !!p && p.ids.includes(id); };
+async function toggleFav(id) {
+  const t = st.tracks.get(id); if (!t) return;
+  let p = favPl();
+  if (p && p.ids.includes(id)) { p.ids = p.ids.filter(x => x !== id); await dbPut("playlists", p); toast(`Taken out of ${FAV}.`, 2500); }
+  else { if (!p) p = await createPlaylist(FAV, [id]); else { p.ids.push(id); await dbPut("playlists", p); } toast(`♥ “${nm(t.title)}” is in ${FAV}.`, 2500); }
+  if (st.queueSource === p.id) syncQueue();
+  renderSide(); renderPlayerText(); keepScroll(renderList);
+}
+function nowSheet() { // the song playing: find it in the list, favorite it, file it, or take it out
+  const t = A().track; if (!t) return toast("Nothing is playing.");
+  const src = st.playlists.find(p => p.id === st.queueSource), here = curPl();
+  const pl = src && src.ids.includes(t.id) ? src : here && here.ids.includes(t.id) ? here : null;
+  const items = [["Show it in the list", () => findPlaying()], [isFav(t.id) ? "♥ Take out of Favorites" : "♥ Add to Favorites", () => toggleFav(t.id), "go"], ["Add to folder…", () => addToPlaylist(t.id)]];
+  if (pl) items.push([`Remove from “${pl.name}”`, () => removeFromPl(t.id, pl)]);
+  items.push(["Edit tempo, key and cue points", () => editTrack(t.id)]);
+  items.push(["Delete from library", () => askDelete(t.id), "danger"]);
+  menuSheet(`Playing now: ${nm(t.title)}`, items);
+}
+function findPlaying() { // jump the list to the song playing and light it up
+  const t = A().track; if (!t) return toast("Nothing is playing.");
+  const inView = () => viewTracks().some(x => x.id === t.id);
+  if (st.sel) st.sel = null;
+  if (st.q && !inView()) { st.q = ""; $("#q").value = ""; }
+  if (!inView()) {
+    const src = st.playlists.find(p => p.id === st.queueSource), ip = st.playlists.find(p => p.name === INST_FOLDER);
+    st.view = src && src.ids.includes(t.id) ? src.id : t.isInst && ip ? ip.id : "library"; lsSet("cb.view", st.view);
+  }
+  renderAll();
+  const row = document.querySelector(`#content .row[data-id="${CSS.escape(t.id)}"]`); if (!row) return toast("It isn't in this list.");
+  row.scrollIntoView({ block: "center" }); setTimeout(() => row.scrollIntoView({ block: "center" }), 120); // twice: rows off screen are sized once they're near
+  row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 2600);
+}
+function askDelete(id) {
+  const t = st.tracks.get(id); if (!t) return;
+  const playing = decks.some(d => d.track && d.track.id === id);
+  confirmSheet("Delete song?", `“${nm(t.title)}” will be removed from this device and from every folder.${playing ? " It's playing, so the app mixes out of it first." : ""}`, "Delete", () => playing ? deletePlaying(id) : deleteTrack(id));
+}
+async function deletePlaying(id) { // mix out of the song playing (or skip it), then delete it
+  if (mix && mix.to && mix.to.track && mix.to.track.id === id) { cancelMix(); return deleteTrack(id); }
+  if (st.nextI == null) { if (st.playing) await togglePlay(); A().el.pause(); A().track = null; st.playing = false; renderAll(); return deleteTrack(id); }
+  st.pendingDelete = id;
+  if (S.automix && st.playing && !mix) { mixNow(); toast("Mixing out of it now. It's deleted once the mix ends.", 3500); }
+  else if (!mix) { await hardPlay(st.nextI); finishDelete(); }
+}
+function finishDelete() {
+  const id = st.pendingDelete; if (!id || decks.some(d => d.track && d.track.id === id)) return;
+  st.pendingDelete = null; st.history = st.history.filter(h => h.id !== id); deleteTrack(id);
 }
 function addToPlaylist(idOrIds) {
   const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds], id = ids[0], t = st.tracks.get(id), many = ids.length > 1;
@@ -3291,7 +3600,7 @@ async function markOldInstrumentals() { // instrumentals added before 6.89 went 
   toast(`Moved ${found.length} instrumental${found.length === 1 ? "" : "s"} out of My DJ Library into ${INST_FOLDER}.`, 6000);
 }
 async function createPlaylist(name, ids = []) { const p = { id: uid(), name, ids, created: Date.now() }; st.playlists.push(p); await dbPut("playlists", p); return p; }
-async function removeFromPl(id) { const p = curPl(); p.ids = p.ids.filter(x => x !== id); await dbPut("playlists", p); if (st.queueSource === p.id) syncQueue(); renderAll(); }
+async function removeFromPl(id, p = curPl()) { if (!p) return; p.ids = p.ids.filter(x => x !== id); await dbPut("playlists", p); if (st.queueSource === p.id) syncQueue(); renderAll(); toast(`Taken out of “${p.name}”.`, 2500); }
 async function deleteTrack(id, quiet) {
   if (decks.some(d => d.track && d.track.id === id)) return quiet ? null : toast("That song is playing. Skip past it, then delete it.");
   st.tracks.delete(id); await dbDel("tracks", id); await dbDel("audio", id); await dbDel("files", id); sessionAudio.delete(id);
@@ -3492,8 +3801,15 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "7.00";
+const APP_VERSION = "7.01";
 const CHANGELOG = [
+  ["7.01", "October 6, 2026", ["Keeps playing when you switch to another app or lock the screen, on its own: the phone is told this app plays music, and the music hands off to the background player the moment you leave (it used to wait for a check the phone often froze)",
+    "Clean mode stays clean in the background too: each song plays from a copy with its flagged words made silent inside the file (iPhone ignores an app's volume control in the background, so the old way let words through)",
+    "⏮ works from the lock screen and headphones, works in the middle of a mix (back to just before it, so you hear it again), and songs played in the background count as heard",
+    "Mix in next: tap a song while the music plays and pick Mix in next. Nothing skips; the song playing blends into it. A NEXT tag shows which song is coming. Also in ⋯ and in Menu → Auto mix plan (tap a song)",
+    "My order: pick Mine (phones: the order menu) and drag songs by their ≡ handle, or ⋯ → Move to the top. Auto mix plays them in exactly that order, each song blending into the next one down",
+    "The song playing: tap its title in the player to jump to it in the list, ♥ to add it to Favorites, ⋯ to add it to a folder, take it out of this folder, or delete it (the app mixes out of it first)",
+    "Updates itself: when a new version is out, the app picks it up the next time you open it (or shows Update now while music plays)"]],
   ["7.00", "October 6, 2026", ["Phones: every song shows its length (minutes:seconds) in gold at the start of the line under its title, so it's never cut off by a long artist name"]],
   ["6.99", "October 6, 2026", ["Vocal ride: on some mixes the old song's words ride over the new song's beat until the line ends, then echo out (Mix settings → Old song's words over the new beat)", "When the new song's keys or groove clash with the old one, its instruments come in turned down and rise back by the bass swap, for a smoother blend", "Beat breaks before a mix now get a DJ drop, a whole-sentence vocal from another song (in key, on tempo, with an echo) or a sound effect", "The pro checklist also shows how the instruments were blended"]],
   ["6.98", "October 6, 2026", ["Adding music while My DJ Library is open asks which folder the songs should go in (or a new one), so they never end up only in the library by surprise", "Menus fit the phone: nothing slides left and right, long rows wrap", "Vocal hooks and duplicate lists show every entry (with the hook's words) instead of a tiny box that only showed three"]],
@@ -3674,6 +3990,7 @@ $("#cleanBtn").onclick = toggleClean;
 $("#cleanItem").onclick = cleanSheet;
 $("#planItem").onclick = planSheet;
 document.addEventListener("change", e => {
+  if (e.target.matches && e.target.matches("[data-plsel]")) { if (e.target.value) setOrder(e.target.value); return; }
   const m = e.target.closest && e.target.closest("[data-mixmin],[data-unmatched]"); if (!m) return;
   if (m.dataset.mixmin != null) S.mixMin = +m.value; else S.unmatched = m.value;
   saveS(); mixOrderCache.key = ""; decks.forEach(d => d.plan = null); if (st.queueSource || st.queue.length) syncQueueBest(); renderAll(); computeNext(); renderPlayerText();
@@ -3692,6 +4009,21 @@ $("#newsItem").onclick = () => $("#verBtn").click();
 $("#fixItem").onclick = readdMissing;
 $("#storeItem").onclick = storageCheck;
 $("#newsItem span").textContent = "What's new (v" + APP_VERSION + ")";
+/* a newer version on the website: a phone keeps a Home Screen app open for days, so look each time you come back to it.
+   Not playing: it updates right away. Playing: a bar offers "Update now" (your songs, folders and list stay). */
+var newVer = null;
+async function checkUpdate() {
+  if (FRAMED || !/^https?:$/.test(location.protocol) || newVer) return;
+  try {
+    const r = await fetch("version.txt?t=" + Date.now(), { cache: "no-store" }); if (!r.ok) return;
+    const v = (await r.text()).trim(); if (!/^\d+\.\d+$/.test(v) || parseFloat(v) <= parseFloat(APP_VERSION)) return;
+    newVer = v;
+    if (!st.playing && !st.busy && $("#scrim").hidden && !st.sel) { saveQueue(); location.reload(); return; }
+    keepScroll(renderList);
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
+setTimeout(checkUpdate, 5000);
 $("#iconItem").onclick = () => openSheet(`<h2>App icon</h2><img class="iconbig" src="icon-1024.png" alt="Apex Studios app icon: the red APEX drone with its camera head, headphones and DJ STYLE, over Apex Studios in red fading to blue">
   <p>To use this icon on your iPhone Home Screen:</p>
   <div class="btsteps">
@@ -3713,13 +4045,18 @@ document.querySelectorAll(".bar").forEach(b => b.addEventListener("click", e => 
 document.addEventListener("click", e => {
   const v = e.target.closest("[data-view]"); if (v) { st.view = v.dataset.view; lsSet("cb.view", st.view); renderAll(); $("#content").scrollTop = 0; return; }
   if (e.target.matches && e.target.matches("[data-mixmin],[data-unmatched]")) return; // handled on change
-  const ps = e.target.closest("[data-plsort]"); if (ps) { S.plSort = ps.dataset.plsort; st.sortClicked = false; saveS(); if (st.queueSource) syncQueue(); renderAll(); return; }
+  const ps = e.target.closest("[data-plsort]"); if (ps) { setOrder(ps.dataset.plsort); return; }
   const s = e.target.closest("[data-sort]"); if (s) { st.sortClicked = true; const k = s.dataset.sort; st.sort = { k, dir: st.sort.k === k ? -st.sort.dir : (k === "title" || k === "artist" || k === "key" ? 1 : -1) }; lsSet("cb.sort", st.sort); renderList(); return; }
   if (st.sel && !e.target.closest("[data-act]")) { const r = e.target.closest("#content .row"); if (r) { st.sel.has(r.dataset.id) ? st.sel.delete(r.dataset.id) : st.sel.add(r.dataset.id); const y = $("#content").scrollTop; renderList(); $("#content").scrollTop = y; return; } }
   const a = e.target.closest("[data-act]"); if (!a || a.closest("#sheet")) return;
   const row = a.closest(".row"), id = row && row.dataset.id;
   switch (a.dataset.act) {
     case "play": playFromView(id); break;
+    case "tap": songTap(id); break;
+    case "nowfind": findPlaying(); break;
+    case "nowfav": if (A().track) toggleFav(A().track.id); break;
+    case "nowmenu": nowSheet(); break;
+    case "update": saveQueue(); location.reload(); break;
     case "pick": { if (!st.sel) break; st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id); const y = $("#content").scrollTop; renderList(); $("#content").scrollTop = y; break; }
     case "select": startSelect(); break;
     case "readd": readdMissing(); break;
@@ -3736,7 +4073,8 @@ document.addEventListener("click", e => {
     case "menu": rowMenu(id); break;
     case "add": $("#file").click(); break;
     case "demo": loadDemos(); break;
-    case "playall": { const ids = viewTracks().map(t => t.id); if (S.nextMode === "best") { if (S.plSort === "mix" && !st.q && !st.sortClicked) { st.mixPlan = bestOrder(ids); setQueue(S.unmatched === "skip" ? ids.slice(0, Math.max(1, mixOrderCache.chained)) : ids); hardPlay(0); } else hardPlay(queueBest(ids)); break; } setQueue(ids); hardPlay(S.nextMode === "shuffle" ? Math.floor(Math.random() * ids.length) : 0); break; }
+    case "playall": { const ids = viewTracks().map(t => t.id); if (S.plSort === "mine" && !st.sortClicked && S.nextMode !== "shuffle") { setQueue(ids); hardPlay(0); toast("Playing in your order. Auto mix blends each song into the next one down the list.", 4000); break; }
+      if (S.nextMode === "best") { if (S.plSort === "mix" && !st.q && !st.sortClicked) { st.mixPlan = bestOrder(ids); setQueue(S.unmatched === "skip" ? ids.slice(0, Math.max(1, mixOrderCache.chained)) : ids); hardPlay(0); } else hardPlay(queueBest(ids)); break; } setQueue(ids); hardPlay(S.nextMode === "shuffle" ? Math.floor(Math.random() * ids.length) : 0); break; }
     case "stopimport": st.stopImport = true; setBusy("Stopping after this song…"); break;
     case "renamepl": { const p = curPl(); openSheet(`<h2>Rename folder</h2><form id="rn" class="newpl" style="display:flex"><input id="rnv" value="${esc(p.name)}" maxlength="60" aria-label="Folder title"><button class="btn primary" type="submit">Save</button></form>`, sh => sh.querySelector("#rn").addEventListener("submit", async ev => { ev.preventDefault(); const n = sh.querySelector("#rnv").value.trim(); if (n) { p.name = n; await dbPut("playlists", p); } closeSheet(); renderAll(); })); break; }
     case "delpl": { const p = curPl(); confirmSheet("Delete folder?", `“${p.name}” will be deleted. The songs stay in your library.`, "Delete", async () => { st.playlists = st.playlists.filter(x => x !== p); await dbDel("playlists", p.id); if (st.queueSource === p.id) st.queueSource = null; st.view = "library"; lsSet("cb.view", st.view); renderAll(); }); break; }
