@@ -6,12 +6,20 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#000000">
 <meta name="description" content="DJ Stylez's pro auto-mixing DJ app.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Apex Studios">
+<meta property="og:description" content="DJ Stylez's pro auto-mixing DJ app">
+<meta property="og:url" content="https://apex-dj.github.io/">
+<meta property="og:image" content="https://apex-dj.github.io/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apex Studios DJ App</title>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-64.png">
-<meta name="apple-mobile-web-app-title" content="Apex Studios DJ App">
+<meta name="apple-mobile-web-app-title" content="Apex Studios">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -3409,8 +3417,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.92";
+const APP_VERSION = "6.93";
 const CHANGELOG = [
+  ["6.93", "October 5, 2026", ["New app icon: the red APEX drone (camera head, headphones, DJ STYLE) over “Apex Studios” in the title's red-to-blue colours", "The name under the Home Screen icon is now “Apex Studios”", "Sharing apex-dj.github.io shows the drone and “Apex Studios” as the link picture"]],
   ["6.92", "October 5, 2026", ["Two voices never talk over each other: the old song's singer finishes the line and echoes out on the beat, the new song's instrumental bridges the gap, and its words come in on their next line", "Vocal hooks: whole sentences, played only where nobody else is singing, then an echo out in time", "Intro moves from the new song's own music: a music-hook filter rise, keyboard stabs, a reverse swell, a word tease, a beat roll or a clean blend; scratches only now and then, never the same move twice in a row", "Auto mix plan shows the pro checklist for the last mix: tempo, beats, bars, key, vocals, bass, levels, intro, hook and exit", "In Clean mode, hooks with cuss words never play"]],
   ["6.91", "October 5, 2026", ["Long lists: once the sort buttons scroll away, a slim bar stays at the top with Mix / BPM / A–Z, Play, Select and ↑ Top", "Select songs: pick songs, then ▶ Play just those (in the best mix order), + Add them to a folder, or Delete them", "Missing audio: the message names the song, Fix it uses another copy already in your library when there is one, and Remove takes it out", "Adding a folder again no longer counts songs that were already there as new"]],
   ["6.90", "October 5, 2026", ["Fixed: the app could close by itself at startup (\"A problem repeatedly occurred\") when instrumentals had been added as songs: they're now sorted by name without loading any audio", "If the app ever does close while starting, the next start skips background clean-up so it can't happen twice in a row", "After a restart your play list is still there: Play continues the same song where it was, and Next keeps going instead of saying the list ended", "Songs load with less memory (unpacked at CD rate, no extra copy), so long mixing sessions on iPhone stay well within its limits"]],
@@ -3589,7 +3598,7 @@ $("#newsItem").onclick = () => $("#verBtn").click();
 $("#fixItem").onclick = readdMissing;
 $("#storeItem").onclick = storageCheck;
 $("#newsItem span").textContent = "What's new (v" + APP_VERSION + ")";
-$("#iconItem").onclick = () => openSheet(`<h2>App icon</h2><img class="iconbig" src="icon-1024.png" alt="Apex Studios DJ App icon: a DJ at a booth, red fading to blue">
+$("#iconItem").onclick = () => openSheet(`<h2>App icon</h2><img class="iconbig" src="icon-1024.png" alt="Apex Studios app icon: the red APEX drone with its camera head, headphones and DJ STYLE, over Apex Studios in red fading to blue">
   <p>To use this icon on your iPhone Home Screen:</p>
   <div class="btsteps">
     <div><b>1.</b> Press and hold the picture above and tap <b>Save to Photos</b>.</div>
