@@ -1397,9 +1397,14 @@ async function prepareNext() { // load the next song a few seconds early so the 
   try { await loadDeck(to, t); if (prep && prep.id === id) prep.ready = true; preloadHook(t, A().track); } catch (e) { prep = null; to.track = null; }
 }
 
-async function hardPlay(i) {
+function pushHistory(id, out) {
+  if (!id) return; const h = st.history; if (h.length && h[h.length - 1].id === id) h.pop();
+  h.push({ id, out: out != null && isFinite(out) ? out : null }); if (h.length > 100) h.shift();
+}
+async function hardPlay(i, opts = {}) {
   ensureCtx(); actx.resume().catch(() => {});
   const id = st.queue[i], t = st.tracks.get(id); if (!t) return;
+  const was = A().track; if (was && was.id !== id && !opts.back) pushHistory(was.id, A().el.currentTime);
   cancelMix(); ease = null; prep = null;
   const d = A(), o = B();
   unlock(o); o.el.pause(); setParam(o.gain.gain, 0); resetFx(o); o.track = null;
@@ -2110,6 +2115,7 @@ function noteUnchecked(t) {
 function finishMix() {
   const m = mix; mix = null;
   const { from, to } = m;
+  if (from.track) pushHistory(from.track.id, m.pro && m.M != null ? m.M : null);   // where it mixed out, to hear that mix again
   clearInterval(brakeTimer); brakeTimer = null;
   clearTimeout(m.releaseTimer); if (from.el.clearLoop) from.el.clearLoop(); from.el.pause(); setParam(from.gain.gain, 0); resetFx(from); from.track = null; from.el.playbackRate = 1;
   if (from.bp && from.el === from.bp) from.bp.load(null); // let go of the old song's audio right away: phones have little memory to spare
@@ -2331,18 +2337,31 @@ function skipNext() {
   const cur = A().track && A().track.id; setQueue(ids); const i = cur ? st.queue.indexOf(cur) : -1;
   hardPlay(i >= 0 && i + 1 < st.queue.length ? i + 1 : 0);
 }
-function saveQueue() { try { lsSet("cb.queue", st.queue.length ? { ids: st.queue, qi: st.qi, src: st.queueSource, pos: A().track ? Math.round(A().el.currentTime || 0) : 0 } : null); } catch (e) {} }
+function saveQueue() { try { lsSet("cb.queue", st.queue.length ? { ids: st.queue, qi: st.qi, src: st.queueSource, pos: A().track ? Math.round(A().el.currentTime || 0) : 0, hist: st.history.slice(-30) } : null); } catch (e) {} }
 function restoreQueue() { // after a restart: the same list, ready to continue where it was
   const q = lsGet("cb.queue"); if (!q || !Array.isArray(q.ids) || st.queue.length) return;
   const ids = q.ids.filter(id => st.tracks.has(id)); if (!ids.length) return;
   const cur = q.ids[q.qi]; st.queue = ids; st.qi = Math.max(-1, ids.indexOf(cur)); st.queueSource = q.src || null; st.resumeAt = q.pos || 0; st.forcedNext = false;
+  if (Array.isArray(q.hist)) st.history = q.hist.filter(h => h && st.tracks.has(h.id));
   try { computeNext(); } catch (e) {}
 }
 setInterval(() => { if (st.playing) saveQueue(); }, 5000);
-function skipPrev() {
-  const d = A();
-  if (d.track && d.el.currentTime > 5) { d.el.currentTime = startPoint(d.track, d); return; }
-  if (st.qi > 0) hardPlay(st.qi - 1); else if (st.queue.length) hardPlay(0);
+async function skipPrev() {
+  const d = A(), cur = d.track;
+  let prev = null; while (st.history.length) { const h = st.history.pop(); if (st.tracks.has(h.id) && (!cur || h.id !== cur.id) && !st.tracks.get(h.id).bad) { prev = h; break; } }
+  if (!prev) { // nothing played before this one: start it over
+    if (cur) d.el.currentTime = startPoint(cur, d); else if (st.queue.length) hardPlay(0);
+    return;
+  }
+  // put it back in the list just before the song you were on, so ⏭ (or auto mix) takes you forward again
+  st.queue = st.queue.filter(x => x !== prev.id); let at = cur ? st.queue.indexOf(cur.id) : -1; if (at < 0) at = Math.max(0, st.qi);
+  st.queue.splice(at, 0, prev.id); if (cur) st.played.delete(cur.id); st.played.delete(prev.id); st.forcedNext = false;
+  await hardPlay(at, { back: true });
+  const t = st.tracks.get(prev.id), P = t && t.bpm ? 60 / t.bpm : 0.5;
+  if (prev.out != null && A().track === t && A().el.duration) { // a few bars before it mixed out, so that mix plays again
+    const pos = Math.max(startPoint(t, A()), prev.out - 16 * P); if (pos < A().el.duration - 20) { A().el.currentTime = pos; A().plan = null; }
+  }
+  toast(`Back to “${nm(t.title)}”.`, 2500);
 }
 function mixNow() {
   if (!A().track) return togglePlay();
@@ -2372,7 +2391,7 @@ function refineTrack(t, buf) {
 
 /* ---------- app state ---------- */
 const st = { hooks: new Map(), tracks: new Map(), playlists: [], view: lsGet("cb.view") || "library", sort: lsGet("cb.sort") || { k: "added", dir: -1 }, q: "",
-  queue: [], qi: -1, nextI: null, forcedNext: false, played: new Set(), playing: false, queueSource: null, busy: "" };
+  queue: [], qi: -1, nextI: null, forcedNext: false, played: new Set(), playing: false, queueSource: null, busy: "", history: [] };
 const curPl = () => st.playlists.find(p => p.id === st.view) || null;
 function viewTracks() {
   let list;
@@ -3430,8 +3449,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.95";
+const APP_VERSION = "6.96";
 const CHANGELOG = [
+  ["6.96", "October 6, 2026", ["⏮ goes back to the song you just heard (even after auto mix), a few bars before its mix so you hear it again; the song you were on stays next, so ⏭ takes you forward again"]],
   ["6.95", "October 6, 2026", ["Clean mode: songs not checked for cuss words yet are tagged “not checked”, and the first time one plays the app explains why it sounds hollow (its vocals are taken out until the Mac has checked it)"]],
   ["6.94", "October 5, 2026", ["Songs in Apple's .m4a format now get everything the Mac works out for them too: the cuss-word check for Clean mode, the vocal map and the beat grid (before, only MP3s did)"]],
   ["6.93", "October 5, 2026", ["New app icon: the red APEX drone (camera head, headphones, DJ STYLE) over “Apex Studios” in the title's red-to-blue colours", "The name under the Home Screen icon is now “Apex Studios”", "Sharing apex-dj.github.io shows the drone and “Apex Studios” as the link picture"]],
