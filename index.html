@@ -906,7 +906,11 @@ function readMP4(buf) {
       let size = dv.getUint32(p), h = 8; const type = strAt(u, p + 4, 4);
       if (size === 1) { size = Number(dv.getBigUint64(p + 8)); h = 16; } else if (size === 0) size = e - p;
       if (size < h || p + size > e) break;
-      if (inIlst) {
+      if (inIlst && type === "----") { // iTunes-style custom tags: the Mac's song data on .m4a files (APEX_ANALYSIS and friends)
+        let q = p + h, name = "", val = null;
+        while (q + 8 <= p + size) { const cs = dv.getUint32(q), ct = strAt(u, q + 4, 4); if (cs < 8) break; if (ct === "name") name = utf8(u.subarray(q + 12, q + cs)); else if (ct === "data") val = utf8(u.subarray(q + 16, q + cs)); q += cs; }
+        const m = /^APEX_(EXPLICIT|ANALYSIS|HOOK|DROP|INST)$/.exec(name); if (m && val != null) out[{ EXPLICIT: "explicit", ANALYSIS: "apex", HOOK: "hook", DROP: "drop", INST: "inst" }[m[1]]] = val;
+      } else if (inIlst) {
         const d = p + h;
         if (d + 16 <= p + size && strAt(u, d + 4, 4) === "data") {
           const pay = u.subarray(d + 16, d + dv.getUint32(d));
@@ -3417,8 +3421,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.93";
+const APP_VERSION = "6.94";
 const CHANGELOG = [
+  ["6.94", "October 5, 2026", ["Songs in Apple's .m4a format now get everything the Mac works out for them too: the cuss-word check for Clean mode, the vocal map and the beat grid (before, only MP3s did)"]],
   ["6.93", "October 5, 2026", ["New app icon: the red APEX drone (camera head, headphones, DJ STYLE) over “Apex Studios” in the title's red-to-blue colours", "The name under the Home Screen icon is now “Apex Studios”", "Sharing apex-dj.github.io shows the drone and “Apex Studios” as the link picture"]],
   ["6.92", "October 5, 2026", ["Two voices never talk over each other: the old song's singer finishes the line and echoes out on the beat, the new song's instrumental bridges the gap, and its words come in on their next line", "Vocal hooks: whole sentences, played only where nobody else is singing, then an echo out in time", "Intro moves from the new song's own music: a music-hook filter rise, keyboard stabs, a reverse swell, a word tease, a beat roll or a clean blend; scratches only now and then, never the same move twice in a row", "Auto mix plan shows the pro checklist for the last mix: tempo, beats, bars, key, vocals, bass, levels, intro, hook and exit", "In Clean mode, hooks with cuss words never play"]],
   ["6.91", "October 5, 2026", ["Long lists: once the sort buttons scroll away, a slim bar stays at the top with Mix / BPM / A–Z, Play, Select and ↑ Top", "Select songs: pick songs, then ▶ Play just those (in the best mix order), + Add them to a folder, or Delete them", "Missing audio: the message names the song, Fix it uses another copy already in your library when there is one, and Remove takes it out", "Adding a folder again no longer counts songs that were already there as new"]],
