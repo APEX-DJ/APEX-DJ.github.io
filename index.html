@@ -128,7 +128,7 @@ button{cursor:pointer}
 #recsItem svg{color:var(--red)} #selItem svg{color:var(--cyan)} #storeItem svg{color:var(--green)} #hookItem svg{color:var(--violet)} #fixItem svg{color:var(--red)} #dupItem svg{color:var(--orange)} #planItem svg{color:var(--gold)} #voxItem svg{color:var(--pink)} #cleanItem svg{color:var(--green)} #voxItem[aria-pressed="true"],#cleanItem.on{background:var(--violet-wash)} #wakeBtn svg{color:var(--gold)} #miniBtn svg{color:var(--green)} #btBtn svg{color:#3b82f6} #setBtn svg{color:var(--violet)} #newsItem svg{color:var(--pink)}
 #wakeBtn[aria-pressed="true"]{background:var(--gold-wash)} #wakeBtn[aria-pressed="true"] span{color:var(--gold)}
 .app.mini #miniBtn{background:var(--cyan-wash)}
-.viewsel{display:none;width:100%;background:var(--panel2);border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);color:var(--fg);border-radius:12px;padding:10px 12px;font-weight:700}
+.viewsel{display:none;width:100%;background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffc23d' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;border:1px solid color-mix(in srgb,var(--gold) 40%,transparent);color:var(--fg);border-radius:12px;padding:10px 36px 10px 12px;font-weight:700;min-height:44px;-webkit-appearance:none;appearance:none}
 .sel{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--fg);font-weight:600;max-width:100%}
 .sel:focus{border-color:var(--gold)}
 .iconbig{display:block;width:min(260px,70%);margin:0 auto;border-radius:22%;box-shadow:0 10px 40px rgba(31,143,255,.35)}
@@ -233,9 +233,9 @@ button{cursor:pointer}
 .dt{min-width:0;display:flex;gap:8px;align-items:baseline}
 .dt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
 .dt small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.dt b[data-act]{cursor:pointer}
+.dt b[data-act]{cursor:pointer;padding:5px 0}
 .dt .dact{margin-left:auto;display:flex;gap:6px;flex:none;align-self:center}
-.dt .dact button{width:34px;height:30px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:700 16px/1 var(--body);padding:0}
+.dt .dact button{width:40px;height:38px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:700 16px/1 var(--body);padding:0}
 .dt .dact button svg{width:16px;height:16px}
 .dt .dact button.on{color:#ff4d6d;border-color:rgba(255,77,109,.5);background:rgba(255,77,109,.12)}
 .fav{color:#ff4d6d;margin-right:5px;font-size:.9em}
@@ -285,7 +285,7 @@ button{cursor:pointer}
 .vb svg{width:18px;height:18px}
 .beatsel{background:var(--panel2);border:1px solid color-mix(in srgb,var(--green) 45%,transparent);color:var(--green);border-radius:999px;padding:7px 10px;font-weight:700;min-height:38px}
 .vb.shuf{--vc:var(--orange)} .vb.rep{--vc:var(--green)}
-.vb.shuf[aria-pressed="false"],.vb.rep[aria-pressed="false"]{opacity:.55;filter:saturate(.4)}
+.vb.shuf[aria-pressed="false"],.vb.rep[aria-pressed="false"],.vb.cln[aria-pressed="false"]{opacity:.55;filter:saturate(.4)}
 .vb.shuf[aria-pressed="true"],.vb.rep[aria-pressed="true"]{box-shadow:0 0 12px color-mix(in srgb,var(--vc) 60%,transparent)}
 .recbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--red) 55%,transparent);background:var(--red-wash);color:var(--red);border-radius:999px;padding:6px 12px;font-weight:800;letter-spacing:.06em;min-height:38px}
 .recbtn .rdot{width:12px;height:12px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);flex:none}
@@ -319,6 +319,7 @@ button{cursor:pointer}
 .plan .pr[data-pid]{cursor:pointer} .plan .pr[data-pid]:active{background:var(--raise)}
 .plan .pr b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
 .plan .pr small{color:var(--muted);font:12px var(--mono)}
+.plan .pr.lg{grid-template-columns:62px minmax(0,1fr)} .plan .pr.lg .pn{font-size:11px} .plan .pr.lg small{display:block;white-space:normal;overflow-wrap:anywhere}
 .plan .pn{font:700 12px var(--mono);color:var(--faint);text-align:center}
 .plan .tx{font:700 11px var(--mono);padding:3px 8px;border-radius:999px;white-space:nowrap}
 .plan .tx.bm{color:var(--green);background:rgba(74,222,128,.12)} .plan .tx.fd{color:var(--gold);background:var(--gold-wash)}
@@ -345,7 +346,7 @@ button{cursor:pointer}
 .mixtag{font:700 10px var(--mono);padding:1px 6px;border-radius:999px;margin-right:4px;white-space:nowrap}
 .mixtag.m{color:var(--green);background:rgba(74,222,128,.12)} .mixtag.r{color:var(--cyan);background:var(--cyan-wash)} .mixtag.c{color:var(--gold);background:var(--gold-wash)} .mixtag.x{color:var(--faint)}
 .mixctl{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;font-size:13px;color:var(--muted)}
-.mixctl select{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 10px;color:var(--fg);font-weight:700}
+.mixctl select{background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffc23d' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);border-radius:999px;padding:6px 28px 6px 12px;color:var(--fg);font-weight:700;min-height:38px;-webkit-appearance:none;appearance:none}
 .vb.mute{--vc:var(--violet)} .vb.down{--vc:var(--cyan)} .vb.up{--vc:var(--gold)} .vb.pause{--vc:var(--red)} .vb.minbtn{--vc:var(--green)}
 .vb.mute[aria-pressed="true"]{background:var(--violet);color:#120b24}
 .vu{display:flex;align-items:flex-end;gap:2px;height:22px;padding:0 2px}
@@ -454,6 +455,7 @@ button{cursor:pointer}
   .toast{bottom:calc(260px + env(safe-area-inset-bottom,0px))}
 }
 .more-ctl{display:none}
+.vb .lbl{display:none}
 @media (max-width:700px), (max-height:560px){
   .top{padding:4px 12px 6px;gap:8px;flex-wrap:wrap}
   .brand{flex:1 1 100%;gap:8px}
@@ -480,6 +482,16 @@ button{cursor:pointer}
   .player:not(.open) .deck:not(.act),.player:not(.open) .xf,.player:not(.open) .upnext,.player:not(.open) .vol,.player:not(.open) .tools,
   .player:not(.open) .foot-brand,.player:not(.open) #dropBtn,.player:not(.open) #autoBtn,.player:not(.open) .beatsel,.player:not(.open) #shufBtn,.player:not(.open) #repBtn,.player:not(.open) #voxBtn,.player:not(.open) #cleanBtn,.player:not(.open) #instBtn{display:none}
   .player:not(.open) .lower{flex-wrap:nowrap}
+  .player.open .fx{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;width:100%;flex-basis:100%}
+  .player.open .fx > *{min-height:46px;width:100%;margin:0;justify-content:center;border-radius:14px}
+  .player.open #mixBtn{order:1;grid-column:span 3} .player.open #dropBtn{order:2;grid-column:span 3}
+  .player.open #autoBtn{order:3;grid-column:span 3} .player.open .beatsel{order:4;grid-column:span 3;text-align:center;text-align-last:center;font-size:15px;height:46px;-webkit-appearance:none;appearance:none;padding:0 30px 0 12px;background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2334d399' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center}
+  .player.open #instBtn{order:5;grid-column:span 6}
+  .player.open #shufBtn{order:6;grid-column:span 2} .player.open #repBtn{order:7;grid-column:span 2} .player.open #cleanBtn{order:8;grid-column:span 2}
+  .player.open .fx .btn .lbl{display:inline}
+  .player.open .fx .vb{height:46px;display:flex;align-items:center;gap:6px;font-weight:700}
+  .player.open .fx .vb .lbl{display:inline;font-size:13px}
+  .player.open .vol .vb{width:42px;height:42px}
   .player:not(.open) .fx{order:1}
   .player:not(.open) .more-ctl{order:2}
   .player:not(.open) .deck .dm span:first-child{display:none}
@@ -549,9 +561,9 @@ html,body{max-width:100%;overflow-x:hidden}
 @media (max-width:860px) and (min-width:701px){ .titlebox .ver{display:none} }
 /* phones: the song title gets every bit of room left over by the number, BPM/key and ⋯ (this sits last on purpose) */
 @media (max-width:700px){
-  .list .row{grid-template-columns:22px minmax(0,1fr) auto 26px;grid-template-areas:"n t b m" "n t k m";gap:2px 6px;padding:8px 4px}
-  .list .row .r-n{width:22px;height:22px;font-size:11px}
-  .list .row .more{width:26px}
+  .list .row{grid-template-columns:24px minmax(0,1fr) auto 34px;grid-template-areas:"n t b m" "n t k m";gap:2px 6px;padding:8px 2px 8px 4px}
+  .list .row .r-n{width:24px;height:auto;min-height:40px;align-self:stretch;font-size:11px;border-radius:8px}
+  .list .row .more{width:34px;height:auto;min-height:40px;align-self:stretch}
   .list .row .r-t b{font-size:16px;font-weight:700;color:#fff;line-height:1.22}
 }
 /* the song list's header row: pinned to the top while you scroll, sized to fit any phone (wraps rather than run off) */
@@ -636,10 +648,10 @@ html,body{max-width:100%;overflow-x:hidden}
         <button class="toggle" id="autoBtn" type="button" aria-pressed="true" title="Auto mix: beat-mix songs that match, fade the rest"><i></i>Auto mix</button>
         <button class="toggle" id="instBtn" type="button" aria-pressed="false" title="Instrumental only: every song and mix plays without vocals"><i></i>Instrumental only</button>
         <select class="beatsel" id="beatSel" aria-label="Auto mix length" title="How many beats each auto mix lasts"><option value="32">32 beats</option><option value="24">24 beats</option><option value="16">16 beats</option><option value="8">8 beats</option></select>
-        <button class="vb shuf" id="shufBtn" type="button" aria-pressed="false" aria-label="Shuffle" title="Shuffle: random order (off = best mixes first)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3c5 0 7 12 12 12h3M18 15l3 3-3 3M3 18h3c1.7 0 3-1.3 4.2-3M21 6h-3c-1.7 0-3 1.3-4.2 3M18 3l3 3-3 3"/></svg></button>
-        <button class="vb rep" id="repBtn" type="button" aria-pressed="true" aria-label="Repeat all" title="Repeat all: start the list over when it ends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3"/></svg></button>
+        <button class="vb shuf" id="shufBtn" type="button" aria-pressed="false" aria-label="Shuffle" title="Shuffle: random order (off = best mixes first)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3c5 0 7 12 12 12h3M18 15l3 3-3 3M3 18h3c1.7 0 3-1.3 4.2-3M21 6h-3c-1.7 0-3 1.3-4.2 3M18 3l3 3-3 3"/></svg><span class="lbl">Shuffle</span></button>
+        <button class="vb rep" id="repBtn" type="button" aria-pressed="true" aria-label="Repeat all" title="Repeat all: start the list over when it ends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3"/></svg><span class="lbl">Repeat</span></button>
         <button class="vb vox" id="voxBtn" type="button" aria-pressed="false" aria-label="Vocals off" title="Vocals off: play songs and mixes without vocals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18"/></svg></button>
-        <button class="vb cln" id="cleanBtn" type="button" aria-pressed="false" aria-label="Clean mode" title="Clean mode: filters out cuss words">C</button>
+        <button class="vb cln" id="cleanBtn" type="button" aria-pressed="false" aria-label="Clean mode" title="Clean mode: filters out cuss words"><b class="cl-c">C</b><span class="lbl">Clean</span></button>
       </div>
       <div class="vol" id="vol" role="group" aria-label="Volume">
         <button class="vb mute" id="muteBtn" type="button" aria-pressed="false" aria-label="Mute" title="Mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 9l4 6M21 9l-4 6"/></svg></button>
@@ -1281,8 +1293,9 @@ function ensureCtx() {
     d.vsend = actx.createGain(); d.vsend.gain.value = 0; d.vdelay = actx.createDelay(4); d.vdelay.delayTime.value = 0.375;
     d.vfb = actx.createGain(); d.vfb.gain.value = 0.45; d.vwet = actx.createGain(); d.vwet.gain.value = 0.9;
     const vhp = biq("highpass", 300, 0.7), vlp = biq("lowpass", 4500, 0.7), vfl = biq("lowpass", 3200, 0.7);
-    d.vride = actx.createGain(); d.vride.gain.value = 0; vlp.connect(d.vride); d.vride.connect(bus);   // its words alone (over another beat)
-    mid.connect(vhp); vhp.connect(vlp); vlp.connect(d.vsend); d.vsend.connect(d.vdelay); d.vdelay.connect(vfl); vfl.connect(d.vfb); d.vfb.connect(d.vdelay); d.vdelay.connect(d.vwet); d.vwet.connect(bus);
+    d.cgate = actx.createGain(); vlp.connect(d.cgate);   // Clean mode / Instrumental only: closes on a flagged word, so neither the echo nor a ride can carry it
+    d.vride = actx.createGain(); d.vride.gain.value = 0; d.cgate.connect(d.vride); d.vride.connect(bus);   // its words alone (over another beat)
+    mid.connect(vhp); vhp.connect(vlp); d.cgate.connect(d.vsend); d.vsend.connect(d.vdelay); d.vdelay.connect(vfl); vfl.connect(d.vfb); d.vfb.connect(d.vdelay); d.vdelay.connect(d.vwet); d.vwet.connect(bus);
     for (const n of [mLow, mTop]) { n.connect(mg, 0, 0); n.connect(mg, 0, 1); }
     side.connect(mg, 0, 0); side.connect(inv); inv.connect(mg, 0, 1);
     mg.connect(mk); mk.connect(d.kar);
@@ -1319,6 +1332,7 @@ async function loadDeck(d, t) { // the same song asked for twice on the same dec
   if (d.loading && d.loading.t === t) return d.loading.p;
   const p = loadDeckNow(d, t); d.loading = { t, p };
   try { await p; } finally { if (d.loading && d.loading.p === p) d.loading = null; }
+  if (d.track === t) cleanDeck(d);
   prepBgClean(d);
 }
 async function loadDeckNow(d, t) {
@@ -1565,7 +1579,7 @@ function applyFlavor(f, from, swap, end, beat) {
   }
   return null;
 }
-async function startMix(manual = false) {
+async function startMix(manual = false, proWhy = "") {
   if (mix || st.nextI == null || !A().track) return;
   ensureCtx();
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track;
@@ -1597,6 +1611,7 @@ async function startMix(manual = false) {
   if (simple) { rate = 1; synced = false; }
   const style = simple ? "fade" : pickStyle(synced), flavor = simple ? "fade" : style === "beatmix" ? (FLAVORS[S.flavor] ? S.flavor : "none") : pickFlavor(style);
   if (!synced && !simple) rate = 1;
+  logMix(simple ? "fade" : "blend", manual ? "Mix now" : !S.automix ? "Auto mix is off" : simple ? `the two songs don't beat-match (${score.why || score.pct + "%"})${proWhy ? "; " + proWhy : ""}` : proWhy || (S.style !== "beatmix" ? STYLES[S.style] : "simple blend"), ft.title, nt.title);
   const leadReal = Math.max(1.5, (plan.swap - from.el.currentTime) / rateF);
   // start the new song so one of its phrase starts lands right on the swap
   let p0 = startPoint(nt, to);
@@ -1742,7 +1757,7 @@ async function startProMix() {
   if (mix || st.nextI == null || !A().track) return;
   ensureCtx();
   const from = A(), to = B(), nextI = st.nextI, nt = st.tracks.get(st.queue[nextI]), ft = from.track, plan = planFor(from);
-  if (!nt || !plan.pro) return startMix();
+  if (!nt || !plan.pro) return startMix(false, "no pro plan for this pair");
   mix = { pending: true, from, to, nextI, fromPos: from.el.currentTime }; ease = null; // claimed right away: no second mix can start while this one gets ready
   await actx.resume().catch(() => {});
   if (!mix || mix.to !== to) return;
@@ -1752,7 +1767,7 @@ async function startProMix() {
     catch (e) { mix = null; to.track = null; nt.bad = 1; toast(`Skipped “${nt.title}”: its audio is missing.`); st.played.add(nt.id); st.queue.splice(nextI, 1); if (nextI < st.qi) st.qi--; st.forcedNext = false; computeNext(); renderAll(); return; }
   }
   if (!mix || mix.to !== to) return;
-  if (!(to.el instanceof BufferPlayer) || !(from.el instanceof BufferPlayer) || from.el.paused) { mix = null; return startMix(); }
+  if (!(to.el instanceof BufferPlayer) || !(from.el instanceof BufferPlayer) || from.el.paused) { mix = null; return startMix(false, from.el.paused ? "the playing song was paused" : `${!(to.el instanceof BufferPlayer) ? "the next" : "the playing"} song couldn't be fully unpacked (too big, or memory), so it plays on the backup player`); }
   const mode = plan.mode || "beat", loopLen = plan.loopLen || 8, slice = loopLen / 2, L1 = mode === "cut" ? 0 : mixLock();
   const rA0 = from.el.playbackRate || 1;
   let pA = 60 / ft.bpm, pB = 60 / nt.bpm, M = plan.start;
@@ -1761,7 +1776,7 @@ async function startProMix() {
   if (la) { pA = la.P; M = la.anchor + Math.round((M - la.anchor) / pA) * pA; }
   let tM = from.el.timeOf(M); const now = actx.currentTime;
   while (tM != null && tM < now + 0.15 && M + 8 * pA < endPoint(from)) { M += 4 * pA; tM = from.el.timeOf(M); }
-  if (tM == null || tM < now + 0.15) { mix = null; return startMix(); }
+  if (tM == null || tM < now + 0.15) { mix = null; return startMix(false, "the mix point had already passed"); }
   // the loop leg uses the punchiest, most word-free slice of the phrase leading up to the mix point
   { const sl = slice * pA, score = c => { const sf = singFrac(ft, c, c + sl); return regionDb(from.el.buf, c, c + sl) - (sf != null ? 30 * sf : 14 * vocalness(from.el.buf, c, c + sl)); };
     let best = M, bs = score(M);
@@ -1985,10 +2000,18 @@ async function startProMix() {
   if (mode !== "cut") loadSfx("impact").then(ib => { if (!ib || !mix || mix.to !== to) return; const s0 = actx.createBufferSource(), g0 = actx.createGain(); s0.buffer = ib; g0.gain.value = 0.6;
     s0.connect(g0); g0.connect(bus); s0.start(Math.max(actx.currentTime, tSwap - peakTime(ib))); }).catch(() => {});
   Object.assign(mix, { moves, rhythmK: rr ? rr.k : 0, rhythm: rr ? Math.round(rr.score * 100) : null });
+  logMix(mode === "cut" ? "power cut" : mode === "ride" ? "pro mix (tempo ride)" : "pro mix", `${Nb} BPM · ${moves.join(", ") || "clean blend"}`, ft.title, nt.title);
   lastMixInfo.moves = moves; lastMixInfo.checks = checks; lastMixInfo.rhythmK = rr ? rr.k : 0; lastMixInfo.rhythm = rr ? Math.round(rr.score * 100) : null;
   renderPlayerText(); renderTransport();
 }
 let lastMixInfo = null;
+/* THE MIX LOG: what happened at every change of song and why (Menu → Auto mix plan → Last changes), so a song that didn't
+   mix can always be explained */
+const mixLog = (() => { const v = lsGet("cb.mixlog"); return Array.isArray(v) ? v : []; })();
+function logMix(kind, why, from, to) {
+  mixLog.push({ at: Date.now(), kind, why, from: (from || (A().track && A().track.title) || "").slice(0, 80), to: (to || "").slice(0, 80) });
+  while (mixLog.length > 40) mixLog.shift(); lsSet("cb.mixlog", mixLog);
+}
 /* where the singing starts in the first 64 beats of a song: the first beat where the centre voice band (300 Hz-3.4 kHz,
    centre minus sides) jumps well above the intro and stays there */
 function findVocalStart(ab, from, pB) {
@@ -2046,7 +2069,7 @@ function rollFx(from, slice0, pA, rate, tCut, P, gain) {
 /* VOCAL HOOKS (mashups): acapella hooks from other songs, made on the Mac (APEX_HOOK files) */
 let nextHook = null; const hookBufs = new Map(), hooksUsed = [];
 function pickHook(nt, ft, N) {
-  const ok = [...st.hooks.values()].filter(h => h.hook && h.hook.bpm && Math.abs(N / h.hook.bpm - 1) <= 0.08 && h.hook.from !== nt.title && (!ft || h.hook.from !== ft.title) && !(S.clean && h.hook.x));
+  const ok = [...st.hooks.values()].filter(h => h.hook && h.hook.bpm && Math.abs(N / h.hook.bpm - 1) <= 0.08 && h.hook.from !== nt.title && (!ft || h.hook.from !== ft.title) && (!S.clean || hookClean(h)));
   const rank = h => { const c = compat(nt.key, h.hook.key).level; return ({ perfect: 0, good: 1, ok: 3, clash: 9, unknown: 4 })[c] + Math.abs(N / h.hook.bpm - 1) * 40 + (hooksUsed.includes(h.id) ? 6 : 0) + Math.random(); };
   return ok.filter(h => ["perfect", "good", "ok"].includes(compat(nt.key, h.hook.key).level)).sort((a, b) => rank(a) - rank(b))[0] || null;
 }
@@ -2445,6 +2468,7 @@ function mixNow() {
 }
 function deckEnded(d) {
   if (d !== A() || mix) return;
+  if (d.track) logMix("ended", st.nextI == null ? "end of the list" : !S.automix ? "Auto mix is off: the song played to its end" : "the song reached its end before a mix started", d.track.title, st.nextI != null ? (st.tracks.get(st.queue[st.nextI]) || {}).title : "");
   if (st.nextI != null) hardPlay(st.nextI); else { st.playing = false; renderTransport(); }
 }
 decks.forEach(d => d.media.addEventListener("ended", () => { if (d.el === d.media) deckEnded(d); }));
@@ -2509,10 +2533,10 @@ function instSwap(ids) {
   for (const t of st.tracks.values()) if (!t.isInst && t.fileName && !t.bad) byFile.set(t.fileName, t);
   return [...new Set(ids.map(id => {
     const t = st.tracks.get(id); if (!t) return id;
-    if (S.novocals && !t.isInst) { const it = byOf.get(t.fileName); return it ? it.id : id; }
+    if (S.novocals && !t.isInst) { const it = byOf.get(t.fileName); return it ? it.id : byOf.size ? null : id; } // no instrumental: skipped (never the hollow vocal remover)
     if (!S.novocals && t.isInst && !fromInstFolder) { const o = byFile.get(t.instOf); return o ? o.id : id; }
     return id;
-  }))];
+  }))].filter(Boolean);
 }
 function setQueue(ids) {
   st.queueSource = curPl() && !st.q ? curPl().id : null; ids = instSwap(ids);
@@ -3033,7 +3057,10 @@ setInterval(tick, 100);
    Clean mode: each song carries the times of its cuss words when the Mac engine has checked it (an "APEX_EXPLICIT"
    tag in the file it exports). During those words the vocals drop out (or everything goes silent, if you choose).
    Songs nobody has checked yet play without vocals, unless you choose to play them as they are. */
-const BAD_RX = /\b(hell|helluva|crap\w*|screwed|tits?|titties|boobs?|dammit|damnit|goddam\w*|bullsh\w*|mofo\w*|biatch\w*|beyotch\w*|muthaf\w*|f+u+c*k+\w*|motha?f\w*|mothaf\w*|sh[i1]+t+\w*|b[i1]+tch\w*|n[i1]+gg?[ae]h?r?s?z?|ass(hole|es)?|pussy|pussies|d[i1]ck\w*|c[o0]ck\w*|cunt\w*|hoes?|whores?|damn\w*|goddamn\w*|bastard\w*|slut\w*|twat\w*|fag\w*)\b/gi;
+const BAD_RX = /\b(hell|helluva|crap\w*|screwed|tits?|titties|boobs?|dammit|damnit|goddam\w*|bullsh\w*|mofo\w*|biatch\w*|beyotch\w*|muthaf\w*|f+u+c*k+\w*|\w*moth(?:a|er|uh|ah)?f\w*|\w*mutha?f\w*|piss\w*|\w*ass(?:hole|holes)\b|dumbass|jackass|smartass|thots?|skanks?|sh[i1]+t+\w*|b[i1]+tch\w*|n[i1]+gg?[ae]h?r?s?z?|ass(hole|es)?|pussy|pussies|d[i1]ck\w*|c[o0]ck\w*|cunt\w*|hoes?|whores?|damn\w*|goddamn\w*|bastard\w*|slut\w*|twat\w*|fag\w*)\b/gi;
+const isBadText = txt => { BAD_RX.lastIndex = 0; const r = BAD_RX.test(String(txt || "")); BAD_RX.lastIndex = 0; return r; };
+// a hook is safe for Clean mode only when its words were written down and none of them is on the list
+const hookClean = h => !!(h && h.hook && h.hook.text && h.hook.x !== 1 && !isBadText(h.hook.text));
 const nm = txt => S.clean ? String(txt || "").replace(BAD_RX, w => w[0] + "*".repeat(Math.max(2, w.length - 1))) : (txt || "");
 const scanned = t => Array.isArray(t && t.explicit);
 const VOX_RANK = { dry: 0, duck: 1, kar: 2, mute: 3 };
@@ -3050,7 +3077,8 @@ function voxBase(d, pos) {
   if (S.novocals) return "kar";
   if (!S.clean) return "dry";
   if (!scanned(t)) return S.cleanUnscanned === "asis" ? "dry" : "kar";
-  for (const [a, b] of t.explicit) if (pos >= a - 0.12 && pos <= b + 0.08) return S.cleanHow === "mute" ? "mute" : "kar"; // every listed word, always
+  if (d.el === d.bp && d.cleanFor && d.cleanFor === d.bp.buf) return "dry"; // the words are already out of this song's audio
+  for (const [a, b] of t.explicit) if (pos >= a - CLEAN_PRE && pos <= b + CLEAN_POST) return S.cleanHow === "mute" ? "mute" : "kar"; // every listed word, always
   return "dry";
 }
 function setVox(d, mode, now) {
@@ -3067,7 +3095,10 @@ function voxFrame() {
     if (hush !== !!bgHush) { bgHush = hush; applyVol(); }
     return;
   }
-  for (const d of decks) setVox(d, voxWanted(d, d.el.currentTime + 0.03 * (d.el.playbackRate || 1)), actx.currentTime);
+  for (const d of decks) {
+    const pos = d.el.currentTime + 0.03 * (d.el.playbackRate || 1); setVox(d, voxWanted(d, pos), actx.currentTime);
+    const g = !d.track || d.track.isInst || voxBase(d, pos) === "dry" ? 1 : 0; if (d.cgate && d.cg !== g) { d.cg = g; d.cgate.gain.setTargetAtTime(g, actx.currentTime, 0.008); }
+  }
 }
 var bgHush = false;
 setInterval(voxFrame, 25);
@@ -3080,13 +3111,35 @@ function renderVox() {
 }
 function toggleVocals() {
   S.novocals = !S.novocals; saveS();
+  const n = instMap().size, cur = A().track;
   if (st.queue.length) { const done = st.queue.slice(0, st.qi + 1), rest = instSwap(st.queue.slice(st.qi + 1)).filter(id => !done.includes(id)); st.queue = done.concat(rest); st.forcedNext = false; computeNext(); }
+  // the song playing switches to its other version right where it is: the Mac's real instrumental, or back to the vocal
+  let other = null;
+  if (cur && !mix) { if (S.novocals && !cur.isInst) other = instMap().get(cur.fileName); else if (!S.novocals && cur.isInst) other = [...st.tracks.values()].find(x => !x.isInst && x.fileName === cur.instOf); }
+  if (other) swapVersion(other.id);
   renderVox(); voxFrame(); renderAll();
-  const n = instMap().size;
-  toast(S.novocals ? (n ? `Instrumental only: songs with a real instrumental (${n}, in orange) play that; the rest play with the vocals taken out.` : "Instrumental only: every song and mix plays without vocals.") : "Vocals back on.", 6000);
+  toast(!S.novocals ? "Vocals back on." : !n ? "Instrumental only: there are no instrumentals on this phone yet, so songs play with the vocals taken out (lower quality). Add the Main Instrumentals folder from iCloud Drive for the real ones."
+    : `Instrumental only: the Mac's real instrumentals (${n}, in orange). Songs that don't have one are skipped while this is on.${cur && !cur.isInst && !other ? " The song playing has none, so its vocals are taken out until the next song." : ""}`, 7000);
+}
+async function swapVersion(id) { // the same moment of the song from its other version (vocal <-> instrumental): a quick crossfade, no gap
+  const a = A(), b = B(), t = st.tracks.get(id); if (!a.track || !t || mix || !(a.el instanceof BufferPlayer)) return false;
+  prep = null; b.el.pause(); setParam(b.gain.gain, 0); resetFx(b);
+  try { await loadDeck(b, t); } catch (e) { return false; }
+  if (mix || A() !== a || !(b.el instanceof BufferPlayer)) return false;
+  const when = actx.currentTime + 0.2, rate = a.el.playbackRate || 1, pos = a.el.currentTime + 0.2 * rate;
+  if (!(pos < (b.el.duration || 0) - 1)) return false;
+  b.el.playbackRate = rate; b.el.playAt(when, pos);
+  auto(b.gain.gain, [[when, 0.0001, "set"], [when + 0.15, 1, "lin"]]); auto(a.gain.gain, [[when, 1, "set"], [when + 0.15, 0.0001, "lin"]]);
+  setTimeout(() => {
+    if (mix || A() !== a) return;
+    a.el.pause(); if (a.bp && a.el === a.bp) a.bp.load(null); a.track = null; setParam(a.gain.gain, 0);
+    active = b.i; if (st.qi >= 0) st.queue[st.qi] = id; st.played.add(id);
+    computeNext(); renderAll(); mediaMeta();
+  }, 450);
+  return true;
 }
 function toggleClean() {
-  S.clean = !S.clean; saveS(); renderVox(); voxFrame(); renderAll(); prepBgClean(A());
+  S.clean = !S.clean; saveS(); decks.forEach(d => S.clean ? cleanDeck(d) : uncleanDeck(d)); renderVox(); voxFrame(); renderAll(); prepBgClean(A());
   if (!S.clean) return toast("Clean mode off.");
   const all = [...st.tracks.values()], n = all.filter(scanned).length;
   toast(n === all.length ? "Clean mode on: cuss words are filtered out." : `Clean mode on. ${n} of ${all.length} songs have been checked for cuss words; the others play without vocals. Menu → Clean mode for details.`, 7000);
@@ -3104,7 +3157,7 @@ function cleanSheet() {
       <div><b>How songs get checked:</b> your Mac separates each song's vocals, listens to every word (speech recognition) and records the exact time of each cuss word inside the song file in iCloud Drive. Add those files here and Clean mode knows exactly when to cut. Songs not checked yet play without vocals while Clean mode is on, so nothing slips through. Songs with "Clean" or "Radio Edit" in the title count as checked.</div>
       <div><b>Screen locked, or in another app:</b> the music keeps going, still clean. Each song plays from a copy with its flagged words made silent; a song that can't be cleaned that way (not checked yet, or not an MP3) plays as its instrumental, or is skipped until you come back. "Vocals off" only works while the app is open.</div></div>
     </div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`, sh => sh.querySelectorAll("[data-cs]").forEach(b => b.addEventListener("click", () => {
-      const [k, v] = b.dataset.cs.split(":"); S[k] = v === "true" ? true : v === "false" ? false : v; saveS(); renderVox(); voxFrame(); renderAll(); prepBgClean(A()); closeSheet(); cleanSheet();
+      const [k, v] = b.dataset.cs.split(":"); S[k] = v === "true" ? true : v === "false" ? false : v; saveS(); decks.forEach(d => { uncleanDeck(d); cleanDeck(d); }); renderVox(); voxFrame(); renderAll(); prepBgClean(A()); closeSheet(); cleanSheet();
     })));
 }
 
@@ -3166,7 +3219,7 @@ function planSheet() {
     <p>${S.nextMode === "best" ? `Best mixes first: songs that match at ${S.mixMin}% or better chain together beat on beat. The rest play after, highest BPM first.` : S.nextMode === "shuffle" ? "Shuffle is on, so the order is random. Turn off Shuffle for best mixes first." : "Playing in list order."}
     <b style="color:var(--green)">${n.beat} beat mix${n.beat === 1 ? "" : "es"}</b> · <b style="color:var(--green)">${n.ride} tempo ride${n.ride === 1 ? "" : "s"}</b> · <b style="color:var(--gold)">${n.cut} power cut${n.cut === 1 ? "" : "s"}</b>${n.fade ? ` · ${n.fade} fade${n.fade === 1 ? "" : "s"}` : ""}.</p>${last}${checkList}
     ${A().track ? `<p style="font-size:13px"><b>Tap any song below to mix it in next.</b> Nothing skips: the song playing finishes its mix into it.</p>` : ""}
-    <div class="plan">${rows}</div><div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`,
+    <div class="plan">${rows}</div>${mixLog.length ? `<h3 style="margin-top:14px">Last changes of song</h3><div class="plan">${mixLog.slice(-12).reverse().map(x => `<div class="pr lg"><span class="pn">${new Date(x.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><div><b>${esc(x.kind)}</b><small>${esc(nm(x.from))}${x.to ? " → " + esc(nm(x.to)) : ""} · ${esc(x.why)}</small></div></div>`).join("")}</div>` : ""}<div class="foot"><button class="btn primary" type="button" data-close>Done</button></div>`,
     sh => sh.querySelectorAll("[data-pid]").forEach(r => r.addEventListener("click", () => { closeSheet(); playNext(r.dataset.pid); })));
 }
 
@@ -3217,9 +3270,10 @@ async function deleteSelected(fromFolderOnly) {
 }
 
 /* ---------- background play ----------
-   Macs keep the full mixer running in the background. Phones stop a web page's mixer soon after you switch apps or lock
-   the screen (and freeze its timers), so on a phone the music hands off to a plain player the moment you leave: it keeps
-   going song after song, and the full mixer (blends, effects, drops) takes back over when you return to the app.
+   The full mixer keeps playing when you switch apps or lock the screen: the app tells the phone it plays music
+   (navigator.audioSession "playback"), and since iOS 17.5 that keeps a web page's mixer running in the background, mixes,
+   Clean mode and all. Only if the phone stops the mixer anyway does the music hand off to a plain player that keeps going
+   song after song; the full mixer takes back over when you return to the app.
    Clean mode: iPhone ignores a page's volume control in the background, so the plain player can't duck a word. It plays a
    copy of the song with the flagged words already silent inside the file instead (made ahead, while the song plays). */
 const bgEl = new Audio(); bgEl.playsInline = true; bgEl.preload = "auto";
@@ -3229,11 +3283,9 @@ document.addEventListener("pointerdown", () => { // phones only let a player sta
   if (!bgEl.src) { bgEl.src = silentUrl; bgEl.play().then(() => bgEl.pause()).catch(() => {}); }
 }, { capture: true });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    // a phone: hand off right now, while the page can still start the player (a check a second later often never runs)
-    if (PHONE && st.playing && !bgMode && !(recorder && recorder.state === "recording")) enterBg();
-    else { setTimeout(checkBg, 700); setTimeout(checkBg, 2500); }
-  } else if (bgMode) leaveBg();
+  if (document.hidden) { playbackSession(); setTimeout(checkBg, 700); setTimeout(checkBg, 2500); setTimeout(checkBg, 6000); } // the mixer's own "stopped" signal (statechange) is the main one
+  else if (bgMode) leaveBg();
+  else if (st.playing && actx && actx.state !== "running") actx.resume().catch(() => {});
 });
 function checkBg() {
   if (!document.hidden || bgMode || !st.playing || !actx) return;
@@ -3268,7 +3320,9 @@ function bgSwap(src, pos) {
 }
 async function enterBg() {
   if (bgMode) return;
-  if (mix && !mix.pending) finishMix(); else if (mix) cancelMix();
+  // the mixer stopped in the middle of a mix: carry on with whichever song was leading (the new one once the basslines swapped)
+  if (mix && !mix.pending && actx.currentTime >= (mix.swapAt || 0)) finishMix(); else if (mix) cancelMix();
+  logMix("background", "the phone stopped the mixer in the background: plain player took over (no mixes until you return)");
   const d = A(), t = d.track; if (!t || !d.url) return;
   let src = null;
   if (!bgCleanNeeded(t)) src = { url: d.url, track: t, own: false };
@@ -3302,6 +3356,7 @@ async function bgAdvance(skipHistory) {
       if (!bgMode) { if (src && src.own) URL.revokeObjectURL(src.url); return; }
       if (!src) { st.qi = i; st.played.add(id); st.forcedNext = false; computeNext(); continue; } // can't play it clean (or its audio is gone): the one after
       if (d.track && !skipHistory) pushHistory(d.track.id, null); skipHistory = false;
+      logMix("background", "plain player in the background: next song without a mix", d.track && d.track.title, src.track.title);
       if (d.bp && d.el === d.bp) d.bp.load(null); // free the full mixer's copy: the plain player has it now
       d.track = src.track; d.light = true; d.plan = null;
       bgSwap(src, bgStart(src.track));
@@ -3356,35 +3411,126 @@ async function leaveBg() {
    (about 10 ms for a whole song). Returns the cleaned copy, or null if this isn't an MP3 it can read. */
 const MP3_BR = [[0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]];
 const MP3_SR = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
-function mp3Silence(buf, spans, pre = 0.15, post = 0.12) {
-  const u = new Uint8Array(buf.slice(0)), n = u.length;
-  const hdr = q => q + 2 < n && u[q] === 0xff && (u[q + 1] & 0xe6) === 0xe2 && (u[q + 1] >> 3 & 3) !== 1 && (u[q + 2] >> 4) !== 0 && (u[q + 2] >> 4) !== 15 && (u[q + 2] >> 2 & 3) !== 3;
-  const setBits = (byte, bit, len, v) => { for (let i = 0; i < len; i++) { const b = bit + i, at = byte + (b >> 3), m = 0x80 >> (b & 7); if (v >> (len - 1 - i) & 1) u[at] |= m; else u[at] &= ~m; } };
-  const crc16 = (from, to, c) => { for (let i = from; i < to; i++) { c ^= u[i] << 8; for (let j = 0; j < 8; j++) c = c & 0x8000 ? ((c << 1) ^ 0x8005) & 0xffff : (c << 1) & 0xffff; } return c; };
-  let p = 0, k = 0, first = true, hits = 0;
+function mp3Frames(u) { // every music frame of an MP3: where it starts, how long it is (bytes); null if this isn't an MP3 it can read
+  const n = u.length, hdr = q => q + 2 < n && u[q] === 0xff && (u[q + 1] & 0xe6) === 0xe2 && (u[q + 1] >> 3 & 3) !== 1 && (u[q + 2] >> 4) !== 0 && (u[q + 2] >> 4) !== 15 && (u[q + 2] >> 2 & 3) !== 3;
+  let p = 0, first = true, sr = 0, spf = 0; const at = [], len = [];
   if (u[0] === 0x49 && u[1] === 0x44 && u[2] === 0x33) p = 10 + ((u[6] & 127) << 21 | (u[7] & 127) << 14 | (u[8] & 127) << 7 | (u[9] & 127)) + (u[5] & 0x10 ? 10 : 0);
   while (p + 4 <= n) {
     if (!hdr(p)) { p++; continue; }
-    const ver = u[p + 1] >> 3 & 3, v1 = ver === 3, crc = !(u[p + 1] & 1), sr = MP3_SR[ver][u[p + 2] >> 2 & 3], br = MP3_BR[v1 ? 0 : 1][u[p + 2] >> 4] * 1000;
-    const size = Math.floor((v1 ? 144 : 72) * br / sr) + (u[p + 2] >> 1 & 1), spf = v1 ? 1152 : 576, mono = u[p + 3] >> 6 === 3, nch = mono ? 1 : 2;
+    const ver = u[p + 1] >> 3 & 3, v1 = ver === 3, crc = !(u[p + 1] & 1), fsr = MP3_SR[ver][u[p + 2] >> 2 & 3], br = MP3_BR[v1 ? 0 : 1][u[p + 2] >> 4] * 1000;
+    const size = Math.floor((v1 ? 144 : 72) * br / fsr) + (u[p + 2] >> 1 & 1), mono = u[p + 3] >> 6 === 3;
     if (p + size > n) break;
     if (p + size + 4 <= n && !hdr(p + size)) { p++; continue; } // a real frame is followed by another one
-    const side = p + 4 + (crc ? 2 : 0), sideLen = v1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
     if (first) { // the Xing / Info / VBRI frame at the start holds no music
-      first = false; const tag = String.fromCharCode(...u.subarray(side + sideLen, side + sideLen + 4)), vbri = String.fromCharCode(...u.subarray(p + 36, p + 40));
+      first = false; const side = p + 4 + (crc ? 2 : 0) + (v1 ? (mono ? 17 : 32) : (mono ? 9 : 17));
+      const tag = String.fromCharCode(...u.subarray(side, side + 4)), vbri = String.fromCharCode(...u.subarray(p + 36, p + 40));
       if (tag === "Xing" || tag === "Info" || vbri === "VBRI") { p += size; continue; }
     }
-    const t0 = k * spf / sr, t1 = (k + 1) * spf / sr;
-    if (spans.some(([a, b]) => t1 > a - pre && t0 < b + post)) {
-      const base = v1 ? 9 + (mono ? 5 : 3) + 4 * nch : 8 + (mono ? 1 : 2), per = v1 ? 59 : 63, grs = v1 ? 2 : 1;
-      for (let g = 0; g < grs; g++) for (let c = 0; c < nch; c++) setBits(side, base + (g * nch + c) * per + 21, 8, 0);
-      if (crc) { const c = crc16(side, side + sideLen, crc16(p + 2, p + 4, 0xffff)); u[p + 4] = c >> 8; u[p + 5] = c & 255; }
-      hits++;
-    }
-    k++; p += size;
+    if (!sr) { sr = fsr; spf = v1 ? 1152 : 576; }
+    at.push(p); len.push(size); p += size;
   }
-  return hits && k > 100 ? u : null;
+  return at.length > 100 ? { sr, spf, at, len } : null;
 }
+/* Clean mode, screen locked: every MP3 frame (about 26 ms of sound) carries a "global gain" number; setting it to 0
+   silences that frame without touching anything else, so a flagged word goes quiet with no decoding or re-encoding
+   (about 10 ms for a whole song). Returns the cleaned copy, or null if this isn't an MP3 it can read. */
+function mp3Silence(buf, spans, pre = 0.15, post = 0.12) {
+  const u = new Uint8Array(buf.slice(0)), fr = mp3Frames(u); if (!fr) return null;
+  const setBits = (byte, bit, len, v) => { for (let i = 0; i < len; i++) { const b = bit + i, at = byte + (b >> 3), m = 0x80 >> (b & 7); if (v >> (len - 1 - i) & 1) u[at] |= m; else u[at] &= ~m; } };
+  const crc16 = (from, to, c) => { for (let i = from; i < to; i++) { c ^= u[i] << 8; for (let j = 0; j < 8; j++) c = c & 0x8000 ? ((c << 1) ^ 0x8005) & 0xffff : (c << 1) & 0xffff; } return c; };
+  let hits = 0;
+  for (let k = 0; k < fr.at.length; k++) {
+    const t0 = k * fr.spf / fr.sr, t1 = (k + 1) * fr.spf / fr.sr; if (!spans.some(([a, b]) => t1 > a - pre && t0 < b + post)) continue;
+    const p = fr.at[k], v1 = (u[p + 1] >> 3 & 3) === 3, crc = !(u[p + 1] & 1), mono = u[p + 3] >> 6 === 3, nch = mono ? 1 : 2;
+    const side = p + 4 + (crc ? 2 : 0), sideLen = v1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+    const base = v1 ? 9 + (mono ? 5 : 3) + 4 * nch : 8 + (mono ? 1 : 2), per = v1 ? 59 : 63, grs = v1 ? 2 : 1;
+    for (let g = 0; g < grs; g++) for (let c = 0; c < nch; c++) setBits(side, base + (g * nch + c) * per + 21, 8, 0);
+    if (crc) { const c = crc16(side, side + sideLen, crc16(p + 2, p + 4, 0xffff)); u[p + 4] = c >> 8; u[p + 5] = c & 255; }
+    hits++;
+  }
+  return hits ? u : null;
+}
+/* A stretch of an MP3, unpacked on its own: just the frames that cover t0..t1 (plus a few before, which the decoder needs
+   to warm up), so a 2-second piece of a song costs 2 seconds of memory, not the whole song. */
+async function mp3Piece(u, fr, t0, t1) {
+  const k0 = Math.max(0, Math.floor(t0 * fr.sr / fr.spf) - 12), k1 = Math.min(fr.at.length, Math.ceil(t1 * fr.sr / fr.spf) + 2); if (k1 - k0 < 14) return null;
+  const a = fr.at[k0], b = fr.at[k1 - 1] + fr.len[k1 - 1], piece = u.slice(a, b).buffer;
+  return { buf: await decode(piece), t0: k0 * fr.spf / fr.sr };
+}
+/* where a piece of a song's instrumental sits against the song itself (the instrumental is the song minus its voice, so the
+   two line up exactly at one offset): returns {base (song sample of the piece's first sample), scale, q} or null */
+function alignPiece(song, ins, t0, wins) {
+  const sr = song.sampleRate; if (ins.sampleRate !== sr) return null;
+  const idx = []; for (const [w0, w1] of wins) for (let i = Math.max(0, Math.floor(w0 * sr)); i < Math.min(song.length, Math.floor(w1 * sr)); i++) idx.push(i);
+  if (idx.length < sr * 0.3) return null;
+  const c0s = song.getChannelData(0), c1s = song.numberOfChannels > 1 ? song.getChannelData(1) : c0s, S0 = new Float32Array(idx.length); idx.forEach((i, k) => { S0[k] = (c0s[i] + c1s[i]) * 0.5; });
+  const I = new Float32Array(ins.length); { const a = ins.getChannelData(0), b = ins.numberOfChannels > 1 ? ins.getChannelData(1) : a; for (let i = 0; i < ins.length; i++) I[i] = (a[i] + b[i]) * 0.5; }
+  const nom = Math.round(t0 * sr), W = Math.round(0.09 * sr);
+  const score = (base, step) => { let c = 0; for (let k = 0; k < idx.length; k += step) { const j = idx[k] - base; if (j >= 0 && j < I.length) c += S0[k] * I[j]; } return c; };
+  let best = nom, bv = -Infinity;
+  for (let L = -W; L <= W; L += 4) { const v = score(nom + L, 4); if (v > bv) { bv = v; best = nom + L; } }
+  const c0 = best; bv = -Infinity; for (let L = -4; L <= 4; L++) { const v = score(c0 + L, 1); if (v > bv) { bv = v; best = c0 + L; } }
+  let ss = 0, ii = 0, si = 0; for (let k = 0; k < idx.length; k++) { const j = idx[k] - best; if (j < 0 || j >= I.length) continue; ss += S0[k] * S0[k]; ii += I[j] * I[j]; si += S0[k] * I[j]; }
+  const q = si / Math.sqrt(ss * ii + 1e-12);
+  return q > 0.35 ? { base: best, scale: clamp(si / (ii + 1e-12), 0.7, 1.3), q } : null;
+}
+
+/* ---------- Clean mode, inside the song itself ----------
+   A flagged word is taken out of the song's own audio as soon as it loads, so it can't come back through any door: the mix,
+   the vocal echo, a vocal ride, a word tease, a scratch, the recording. Each word (with room either side, because word
+   timings in songs are never exact) is replaced by the song's real instrumental at that moment, made on the Mac (the beat
+   and the music carry on, the voice is simply gone); until that's ready, or without an instrumental, by the same moment
+   one or more bars away where nobody sings; failing that, silence. */
+const CLEAN_PRE = 0.2, CLEAN_POST = 0.15, XF = 0.012;
+function cleanSpans(t) {
+  const out = [];
+  for (const [a, b] of t.explicit || []) { const s0 = Math.max(0, a - CLEAN_PRE), e0 = b + CLEAN_POST; if (out.length && s0 <= out[out.length - 1][1] + 0.05) out[out.length - 1][1] = Math.max(out[out.length - 1][1], e0); else out.push([s0, e0]); }
+  return out;
+}
+function writeSpan(buf, s0, e0, fill) { // fill(channel, sample) -> new sample; smooth 12 ms crossfades at both ends; returns the original audio (for undo)
+  const sr = buf.sampleRate, i0 = Math.max(0, Math.floor(s0 * sr)), i1 = Math.min(buf.length, Math.ceil(e0 * sr)), x = Math.max(1, Math.floor(XF * sr));
+  if (i1 <= i0) return null;
+  const orig = [];
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c); orig.push(d.slice(i0, i1));
+    for (let i = i0; i < i1; i++) { const k = Math.min(i - i0, i1 - 1 - i), w = k >= x ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * k / x); d[i] = d[i] * (1 - w) + fill(c, i) * w; }
+  }
+  return { i0, orig };
+}
+function undoSpan(buf, p) { if (p) p.orig.forEach((o, c) => buf.getChannelData(c).set(o, p.i0)); }
+function cleanDeck(d) {
+  const t = d.track, buf = d.el === d.bp ? d.bp.buf : null;
+  if (!S.clean || !buf || !t || !scanned(t) || !t.explicit.length || d.cleanFor === buf) return;
+  const sr = buf.sampleRate, P = t.bpm ? 60 / t.bpm : 0, spans = cleanSpans(t), patches = [];
+  spans.forEach(([s0, e0], k) => {
+    let fill = () => 0;
+    if (S.cleanHow !== "mute" && P && Array.isArray(t.vs)) for (const nb of [-4, 4, -8, 8, -16, 16, -32, 32]) { // the same beat, a bar or more away, where nobody sings
+      const sh = nb * P; if (Math.abs(sh) < e0 - s0 + 0.3 || s0 + sh < 0 || e0 + sh > buf.duration) continue;
+      if (singFrac(t, s0 + sh - 0.1, e0 + sh + 0.1) === 0 && !spans.some(([a, b]) => s0 + sh < b && e0 + sh > a)) { const n = Math.round(sh * sr); fill = (c, i) => buf.getChannelData(c)[i + n]; break; }
+    }
+    patches[k] = writeSpan(buf, s0, e0, fill);
+  });
+  d.cleanFor = buf; d.cleanPatches = patches;
+  if (S.cleanHow !== "mute") cleanFromInst(d, buf, t, spans);
+}
+function uncleanDeck(d) { const buf = d.bp && d.bp.buf; if (buf && d.cleanFor === buf) (d.cleanPatches || []).forEach(p => undoSpan(buf, p)); d.cleanFor = null; d.cleanPatches = null; }
+async function cleanFromInst(d, buf, t, spans) { // the better fix, a moment later: the song's own instrumental under each word
+  const it = instMap().get(t.fileName); if (!it) return;
+  let u = null; try { const b = await audioBlob(it.id); u = b && new Uint8Array(await b.arrayBuffer()); } catch (e) {}
+  const fr = u && mp3Frames(u); if (!fr) return;
+  let done = 0;
+  for (let k = 0; k < spans.length; k++) {
+    if (d.cleanFor !== buf || !S.clean) return;
+    const [s0, e0] = spans[k], pc = await mp3Piece(u, fr, s0 - 0.7, e0 + 0.7).catch(() => null); if (!pc || d.cleanFor !== buf) continue;
+    const al = alignPiece(buf, pc.buf, pc.t0, [[s0 - 0.65, s0 - 0.02], [e0 + 0.02, e0 + 0.65]]); if (!al) continue;
+    const ins = pc.buf, nc = ins.numberOfChannels;
+    undoSpan(buf, d.cleanPatches[k]);
+    d.cleanPatches[k] = writeSpan(buf, s0, e0, (c, i) => { const j = i - al.base; return j >= 0 && j < ins.length ? ins.getChannelData(Math.min(c, nc - 1))[j] * al.scale : 0; });
+    done++;
+  }
+  if (d.cleanFor === buf) d.cleanInst = done;
+}
+
 
 /* ---------- lock screen / headphone controls ---------- */
 function mediaMeta() {
@@ -3801,8 +3947,14 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "7.01";
+const APP_VERSION = "7.02";
 const CHANGELOG = [
+  ["7.02", "October 6, 2026", ["Keeps mixing when you leave the app: the full mixer keeps running in the background (iPhone allows it for music apps since iOS 17.5), so mixes no longer get skipped when you look at another app or the Home Screen; the plain backup player only steps in if the phone stops the mixer",
+    "Clean mode, airtight: each flagged word is taken out of the song's own audio as it loads, replaced by the song's real instrumental (beat and music carry on), so it can't sneak back through a mix, a vocal echo, a vocal ride, a tease or a recording. Wider margins around each word",
+    "Clean mode catches motherf— in every spelling, words with hyphens, and words written with stars; hooks with a cuss word (or with no words written down) never play in Clean mode",
+    "Instrumental only uses the Mac's real instrumentals and switches the song playing to its instrumental right where it is; songs without one are skipped instead of playing through the hollow-sounding vocal remover",
+    "Phone controls (tap the ⌃ arrow): every button is full size with room between them, with words on them (Mix now, Drop, Auto mix, 32 beats, Instrumental only, Shuffle, Repeat, Clean)",
+    "Menu → Auto mix plan → Last changes of song: what happened at every change of song and why, so a song that didn't mix can always be explained"]],
   ["7.01", "October 6, 2026", ["Keeps playing when you switch to another app or lock the screen, on its own: the phone is told this app plays music, and the music hands off to the background player the moment you leave (it used to wait for a check the phone often froze)",
     "Clean mode stays clean in the background too: each song plays from a copy with its flagged words made silent inside the file (iPhone ignores an app's volume control in the background, so the old way let words through)",
     "⏮ works from the lock screen and headphones, works in the middle of a mix (back to just before it, so you hear it again), and songs played in the background count as heard",
