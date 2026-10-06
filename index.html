@@ -369,7 +369,8 @@ button{cursor:pointer}
 .field .inl{display:flex;gap:6px}
 .field .inl .btn{min-height:36px;padding:6px 10px}
 .field .hint{font-size:12px;color:var(--faint)}
-.sheet .foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.sheet .foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;position:sticky;bottom:-18px;margin:0 -18px -18px;padding:12px 18px 18px;background:linear-gradient(180deg,rgba(16,18,28,0),#10121c 30%)}
+.sheet .sheetx{position:sticky;top:-8px;justify-self:end;z-index:3;width:38px;height:38px;margin:-8px -8px -52px 0;border-radius:50%;border:1px solid var(--line);background:#1d2133;color:var(--fg);font:700 16px/1 var(--body);display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.5)}
 .opts{display:grid;gap:16px}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 13px;min-height:34px}
@@ -530,20 +531,16 @@ html,body{max-width:100%;overflow-x:hidden}
   .list .row .more{width:26px}
   .list .row .r-t b{font-size:16px;font-weight:700;color:#fff;line-height:1.22}
 }
-/* long lists: a slim bar slides in at the top once the sort buttons scroll away */
-.minitop{position:sticky;top:-20px;height:0;z-index:6}
-@media (max-width:700px){ .minitop{top:-14px} }
-.minibar{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:nowrap;gap:6px;align-items:center;justify-content:center;padding:8px 6px;border-radius:0 0 14px 14px;
-  background:#090b13;border:1px solid var(--line);border-top:0;box-shadow:0 10px 24px rgba(0,0,0,.55);
-  transform:translateY(-130%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
-.content.scrolled .minibar{transform:none;opacity:1;pointer-events:auto}
-.minibar button{flex:none;min-height:34px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:700 13px var(--body)}
-.minibar button[aria-pressed="true"]{background:linear-gradient(90deg,var(--cyan),var(--violet));color:#0b0d18;border-color:transparent}
-.minibar .mplay{background:linear-gradient(90deg,var(--red),var(--gold));color:#1a0d00;border-color:transparent}
-.minibar .mtop{border-color:var(--gold);color:var(--gold)}
-.checks{display:grid;gap:4px;margin:6px 0 12px}
-.ck{display:grid;grid-template-columns:110px 1fr;gap:8px;font-size:13px;padding:6px 10px;border-radius:10px;background:var(--panel2)}
-.ck.ok b{color:var(--green)} .ck.warn b{color:var(--gold)} .ck span{color:var(--muted)}
+/* the song list's header row: pinned to the top while you scroll, sized to fit any phone (wraps rather than run off) */
+.listbar{position:sticky;top:-20px;z-index:6;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin:0 -6px 10px;padding:8px 6px;background:#090b13;border-bottom:1px solid var(--line);border-radius:0 0 12px 12px}
+@media (max-width:700px){ .listbar{top:-14px} }
+.listbar .seg3{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);min-width:0}
+.listbar .seg3 button{border:0;border-radius:999px;padding:6px 10px;background:none;color:var(--muted);font:700 13px/1 var(--body);white-space:nowrap}
+.listbar .seg3 button[aria-pressed="true"]{background:var(--grad-cool);color:#071018}
+.listbar .lb{min-height:34px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:700 13px/1 var(--body);white-space:nowrap}
+.listbar .lb-play{background:linear-gradient(90deg,var(--red),var(--gold));color:#1a0d00;border-color:transparent}
+.listbar .lb-top{border-color:var(--gold);color:var(--gold);min-width:42px;font-size:17px}
+.content:not(.scrolled) .listbar .lb-top{opacity:.4}
 .fixbar .bad-names{display:block;margin-top:4px;font-weight:700;color:var(--fg)}
 /* the Mac's instrumentals: orange everywhere, filed in their own Main Instrumentals folder */
 .row.inst{box-shadow:inset 3px 0 0 var(--orange)}
@@ -2797,13 +2794,11 @@ function renderList() {
   const busy = `<div class="busy" id="busy" ${st.busy ? "" : "hidden"}><span>${esc(st.busy)}</span><button type="button" data-act="stopimport">Stop</button></div>`;
   let head = `<div class="vhead"><div class="titles"><h1 class="${pl ? "" : "tt"}">${esc(pl ? pl.name : "My DJ Library")}</h1>${stats}</div><div class="acts">`;
   const ord = st.sortClicked && !pl ? "" : S.plSort, mixView = ord === "mix" && !st.q && all.length > 1;
-  if (all.length > 1 && !st.sel) head = `<div class="minitop"><div class="minibar" role="toolbar" aria-label="Song order and play">${[["mix", "Mix"], ["bpm", "BPM"], ["alpha", "A–Z"]].map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}<button type="button" class="mplay" data-act="playall">▶ Play</button><button type="button" data-act="select">Select</button><button type="button" class="mtop" data-act="totop">↑ Top</button></div></div>` + head;
   if (mixView) head += `<div class="mixctl">Beat-mix songs that match <select data-mixmin aria-label="Minimum mix match">${[96, 92, 88, 84, 80].map(v => `<option value="${v}" ${S.mixMin === v ? "selected" : ""}>${v}%+</option>`).join("")}</select> · the rest <select data-unmatched aria-label="Songs below the match"><option value="play" ${S.unmatched !== "skip" ? "selected" : ""}>play after</option><option value="skip" ${S.unmatched === "skip" ? "selected" : ""}>are skipped</option></select></div>`;
-  if (all.length > 1) head += `<div class="order" role="group" aria-label="Song order"><span>Order</span><button type="button" data-plsort="mix" aria-pressed="${ord === "mix"}" title="The order auto mix plays them: best mixes first">Mix order</button><button type="button" data-plsort="bpm" aria-pressed="${ord === "bpm"}">BPM</button><button type="button" data-plsort="alpha" aria-pressed="${ord === "alpha"}">A–Z</button></div>`;
-  if (all.length) head += `<button class="btn primary" type="button" data-act="playall">${ICON_PLAY}Play ${pl ? "folder" : "all"}</button>`;
-  if (all.length && !st.sel) head += `<button class="btn ghost" type="button" data-act="select">Select songs</button>`;
   if (pl) head += `<button class="btn ghost" type="button" data-act="renamepl">Rename</button><button class="btn ghost danger" type="button" data-act="delpl">Delete folder</button>`;
   head += `</div></div>`;
+  // the list's header row: stays at the top while you scroll (sort, play, select, back to the top); it never runs off the screen
+  if (all.length && !st.sel) head += `<div class="listbar" role="toolbar" aria-label="Song order and play">${all.length > 1 ? `<div class="seg3" role="group" aria-label="Song order">${[["mix", "Mix"], ["bpm", "BPM"], ["alpha", "A–Z"]].map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}</div>` : ""}<button type="button" class="lb lb-play" data-act="playall">▶ Play</button><button type="button" class="lb" data-act="select">Select</button><button type="button" class="lb lb-top" data-act="totop" aria-label="Back to the top" title="Back to the top">↑</button></div>`;
   if (st.sel && list.length) {
     const n = st.sel.size, allOn = list.every(t => st.sel.has(t.id));
     head += `<div class="selbar"><span class="cnt">${n} selected</span>
@@ -3185,7 +3180,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 /* ---------- dialogs ---------- */
 function openSheet(html, mount) {
-  const s = $("#sheet"); s.innerHTML = '<video class="sheetlogo" src="logo.mp4" poster="logo-poster.jpg" autoplay muted loop playsinline aria-label="Apex Studios DJ App logo"></video>' + html; $("#scrim").hidden = false;
+  const s = $("#sheet"); s.innerHTML = '<button class="sheetx" type="button" data-close aria-label="Close">✕</button><video class="sheetlogo" src="logo.mp4" poster="logo-poster.jpg" autoplay muted loop playsinline aria-label="Apex Studios DJ App logo"></video>' + html; $("#scrim").hidden = false;
   if (mount) mount(s);
   const f = s.querySelector("input,select,button"); if (f) f.focus();
   kickLogos();
@@ -3449,8 +3444,9 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "6.96";
+const APP_VERSION = "6.97";
 const CHANGELOG = [
+  ["6.97", "October 6, 2026", ["The song list's header row (Mix / BPM / A–Z, Play, Select, ↑ Top) now stays put at the top while you scroll, fits every iPhone (also with larger text), and wraps instead of running off the screen", "Every menu has a ✕ pinned at the top and its Done button pinned at the bottom, so you can always get out without scrolling"]],
   ["6.96", "October 6, 2026", ["⏮ goes back to the song you just heard (even after auto mix), a few bars before its mix so you hear it again; the song you were on stays next, so ⏭ takes you forward again"]],
   ["6.95", "October 6, 2026", ["Clean mode: songs not checked for cuss words yet are tagged “not checked”, and the first time one plays the app explains why it sounds hollow (its vocals are taken out until the Mac has checked it)"]],
   ["6.94", "October 5, 2026", ["Songs in Apple's .m4a format now get everything the Mac works out for them too: the cuss-word check for Clean mode, the vocal map and the beat grid (before, only MP3s did)"]],
@@ -3645,10 +3641,7 @@ $("#viewSel").onchange = e => { const v = e.target.value; if (v === "__new") { e
 $("#moreBtn").onclick = () => { const p = document.querySelector(".player"), open = !p.classList.contains("open"); p.classList.toggle("open", open); $("#moreBtn").setAttribute("aria-expanded", open); $("#moreBtn").setAttribute("aria-label", open ? "Hide extra controls" : "Show all controls"); };
 $("#wakeBtn").onclick = () => setWake(!wantWake);
 $("#q").addEventListener("input", e => { st.q = e.target.value.trim(); renderList(); });
-function updateMinibar() {
-  const c = $("#content"), o = c.querySelector(".vhead .order") || c.querySelector(".vhead .acts");
-  c.classList.toggle("scrolled", !!(o && !st.sel && o.getBoundingClientRect().bottom < c.getBoundingClientRect().top + 4));
-}
+function updateMinibar() { const c = $("#content"); c.classList.toggle("scrolled", c.scrollTop > 120); } // "↑ Top" lights up once you've scrolled
 $("#content").addEventListener("scroll", updateMinibar, { passive: true });
 document.querySelectorAll(".bar").forEach(b => b.addEventListener("click", e => {
   const d = decks[+b.dataset.deck]; if (!d.track || mix || d !== A()) return;
