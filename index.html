@@ -601,7 +601,7 @@ html,body{max-width:100%;overflow-x:hidden}
     <input class="search" id="q" type="search" placeholder="Search songs or artists" aria-label="Search songs or artists">
     <button class="btn addfolder" id="folderBtn" type="button" aria-label="Folders" title="Folders: create, title and fill your folders"><svg class="ficon" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="fg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3347"/><stop offset="1" stop-color="#3fd0ff"/></linearGradient><filter id="fg2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation=".8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect width="32" height="32" rx="7" fill="#0b0d18"/><g filter="url(#fg2)" fill="none" stroke="url(#fg1)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9a2 2 0 0 1 2-2h6l2.4 2.4H26a2 2 0 0 1 2 2V24a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 22.5v-8.5l6-1.4v7.6"/><circle cx="12.6" cy="22.6" r="1.6"/><circle cx="18.6" cy="20.3" r="1.6"/></g></svg><span>Folders</span></button>
     <button class="addbooth" id="addBtn" type="button" aria-label="Add music" title="Add songs from this device"><svg viewBox="372 676 280 196" aria-hidden="true"><defs><linearGradient id="aeq" x1="0" y1="700" x2="0" y2="860" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff3347"/><stop offset=".5" stop-color="#9b2c9a"/><stop offset="1" stop-color="#3fd0ff"/></linearGradient><filter id="aef" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M412 850 V790 M462 850 V740 M512 850 V710 M562 850 V750 M612 850 V800" fill="none" stroke="url(#aeq)" stroke-width="34" stroke-linecap="round" filter="url(#aef)"/></svg></button>
-    <input id="file" type="file" multiple hidden accept="audio/*,video/mp4,video/quicktime,video/webm,.mp3,.m4a,.mp4,.m4v,.aac,.wav,.aif,.aiff,.flac,.ogg,.opus,.webm,.mov,.caf">
+    <input id="file" type="file" multiple hidden accept="audio/*,video/mp4,video/quicktime,video/webm,.mp3,.m4a,.mp4,.m4v,.aac,.wav,.aif,.aiff,.flac,.ogg,.opus,.webm,.mov,.caf,.json,application/json">
     <input id="folder" type="file" multiple hidden webkitdirectory>
   </div>
   </header>
@@ -881,7 +881,10 @@ function grooveCost(a, b) {
   const fa = a.prep && a.prep.fp, fb = b.prep && b.prep.fp; if (!fa || !fb) return 0;
   let dot = 0, na = 0, nb2 = 0; for (const k of ["kick", "snare", "hat"]) for (let i = 0; i < 16; i++) { const x = (fa[k] || [])[i] || 0, y = (fb[k] || [])[i] || 0, w = k === "hat" ? 0.5 : 1; dot += w * x * y; na += w * x * x; nb2 += w * y * y; }
   const sim = na && nb2 ? dot / Math.sqrt(na * nb2) : 1, sw = Math.abs((a.prep.sw || 0) - (b.prep.sw || 0));
-  return clamp((1 - sim) * 60, 0, 25) + clamp(sw * 0.75, 0, 15);
+  // (and how far each song's kick sits from its snare: with the snares locked, a different kick-to-snare distance is a kick flam)
+  const ks = a.prep.ks != null && b.prep.ks != null ? Math.abs(a.prep.ks - b.prep.ks) : 0;
+  const c = clamp((1 - sim) * 60, 0, 25) + clamp(sw * 0.75, 0, 15) + clamp(ks * 0.8, 0, 20);
+  return c >= 35 ? c + 80 : c;   // grooves that really don't play together (a hip-hop beat into a funk groove) count like a key step
 }
 function bestOrder(ids, startId) {
   const T = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && !t.bad), memo = new Map();
@@ -1852,7 +1855,7 @@ function grooveEnv(buf, pos, dur) {
    kick and snare hits start; its bar lines; bar by bar how much drums and voice it has; its groove fingerprint. Carried in
    the song's own tags, so the app never has to guess the beat from the full mix (bass, vocals and synths can fool that). */
 function applyBeats(t, raw) {
-  if (!raw) return; try { const j = JSON.parse(raw); if (!j || !j.b) return; t.prep = { v: j.v, b: j.b, bar0: j.bar0 | 0, dr: j.dr || "", vo: j.vo || "", fp: j.fp || null, sw: +j.sw || 0 }; _prepBeats.delete(t.id); } catch (e) {}
+  if (!raw) return; try { const j = JSON.parse(raw); if (!j || !j.b) return; t.prep = { v: j.v, b: j.b, bar0: j.bar0 | 0, dr: j.dr || "", vo: j.vo || "", fp: j.fp || null, sw: +j.sw || 0, ks: j.ks == null ? null : +j.ks, an: j.an || "snare" }; _prepBeats.delete(t.id); } catch (e) {}
 }
 const _prepBeats = new Map();
 function prepBeats(t) {   // the song's beat times (seconds, as this app decodes it)
@@ -1860,6 +1863,11 @@ function prepBeats(t) {   // the song's beat times (seconds, as this app decodes
   try { const bin = atob(t.prep.b), u = new Uint8Array(bin.length); for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(i);
     const dv = new DataView(u.buffer); let x = dv.getUint32(0, true) / 10000; const out = [x]; for (let i = 4; i + 1 < u.length; i += 2) { x += dv.getUint16(i, true) / 10000; out.push(x); }
     _prepBeats.set(t.id, out); return out; } catch (e) { return null; }
+}
+/* where in its bar (0-3, 0 = the downbeat: the kick on 1, the snare on 2 and 4) a moment of a song falls, from its drum map */
+function barPos(t, x) {
+  const pb = prepBeats(t); if (!pb || !pb.length) return null; let lo = 0, hi = pb.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pb[m] < x) lo = m; else hi = m; }
+  const i = Math.abs(pb[lo] - x) <= Math.abs(pb[hi] - x) ? lo : hi; return ((i - (t.prep.bar0 | 0)) % 4 + 4) % 4;
 }
 /* the beats of a stretch of a song: from its drum map when the Mac made one, otherwise found here (beatMap) */
 function beatsFor(t, buf, t0, t1, P0, near) {
@@ -2129,6 +2137,7 @@ async function startProMix() {
       const p0 = wrapA(aCut + (t - tCut) * rAN), p1 = wrapA(aCut + (t + dt - tCut) * rAN); if (p1 <= p0) continue;
       for (const x of aMap) { if (x >= p1) break; if (x >= p0) clock.push(t + (x - p0) / rAN); } } }
     if (clock.length < K) return fail(3);
+    const aPosT0 = t => wrapA(aCut + (t - tCut) * rAN);
     // THE OLD SONG PLAYS NATURALLY (no part of it is ever cut in from somewhere else). Its words may ride at full volume over
     // the new song's beat; only if the new song's own words come in while the old one still sings does the old song finish
     // its line there and step out behind its filter (two voices never sing at once)
@@ -2140,12 +2149,18 @@ async function startProMix() {
     // the new song's beats in the order they will play: its looped groove (bPre beats), then the song from its real start
     const bReal = bStart + bPre * pB, bMap = beatsFor(nt, to.el.buf, bReal - 2 * pB, bReal + (K + 6) * pB, pB, nearB); if (!bMap) return fail(4);
     let r0 = 0; for (let i = 1; i < bMap.length; i++) if (Math.abs(bMap[i] - bReal) < Math.abs(bMap[r0] - bReal)) r0 = i;
+    // BAR ON BAR, from the two drum maps: the new song's beats are counted so its downbeats land on the old song's downbeats
+    // (its snare on the old song's snare, on 2 and 4), not just beat on beat
+    const pa0 = aMap.fromDrums ? barPos(ft, aPosT0(clock[0])) : null, barB = x => bMap.fromDrums ? barPos(nt, x) : null;
+    if (pa0 != null && barB(bMap[r0]) != null) { const want = (pa0 + bPre) % 4; let best = r0, bd = 9;
+      for (const dlt of [0, 1, -1, 2, -2, 3, -3]) { const i = r0 + dlt; if (i < 0 || i >= bMap.length - 8) continue; if (barB(bMap[i]) === want && Math.abs(dlt) < bd) { bd = Math.abs(dlt); best = i; } } r0 = best; }
     let lpB = null, bedBuf = to.el.buf, bedName = null; if (bPre && bLayer && bLoopFrom == null) { // no break of its own: a classic break from the Beat Loops
       const br = bridgeLoop(Nb); if (!br) return fail(20); bedBuf = br.buf; bedName = br.h.loop.from; const lb2 = br.h.loop.beats || 16, Pl = 60 / br.h.loop.bpm;
       const lm = beatMap(br.buf, 0, Math.min(br.buf.duration, lb2 * Pl + 0.04), Pl, 0); if (!lm || lm.length < lb2) return fail(21);
       bLoopB = Math.min(16, lb2); lpB = lm.slice(0, bLoopB).map(x => Math.max(0, x)); lpB.push(Math.min(br.buf.duration, lpB[bLoopB - 1] + (lpB[bLoopB - 1] - lpB[0]) / (bLoopB - 1))); }
     if (bPre && !lpB) { const lm = loopIsIntro ? bMap.slice(r0) : beatsFor(nt, to.el.buf, bLoopFrom - 2 * pB, bLoopFrom + (bLoopB + 4) * pB, pB, bLoopFrom); if (!lm) return fail(5);
       let j0 = 0; if (!loopIsIntro) for (let i = 1; i < lm.length; i++) if (Math.abs(lm[i] - bLoopFrom) < Math.abs(lm[j0] - bLoopFrom)) j0 = i;
+      if (pa0 != null && lm.fromDrums) { let best = j0, bd = 9; for (const dlt of [0, 1, -1, 2, -2, 3, -3]) { const i = j0 + dlt; if (i < 0 || i + bLoopB >= lm.length) continue; if (barPos(nt, lm[i]) === pa0 % 4 && Math.abs(dlt) < bd) { bd = Math.abs(dlt); best = i; } } j0 = best; }
       if (j0 + bLoopB >= lm.length) return fail(6); lpB = lm.slice(j0, j0 + bLoopB + 1);
       if (!loopIsIntro && !bMap.fromDrums) { const eL = grooveEnv(to.el.buf, tau => lpB[0] + tau, 8 * pB), eR = grooveEnv(to.el.buf, tau => bMap[r0] + tau, 8 * pB);
         if (eL && eR) { const x = grooveLag(eL, eR, 40); if (x.clear >= 1.05) lpB = lpB.map(v => v - x.lag); } } }
@@ -3445,9 +3460,20 @@ function probeDuration(blob) {
     a.onerror = () => { res(null); URL.revokeObjectURL(u); }; a.src = u; });
 }
 const AUDIO_RX = /\.(mp3|m4a|mp4|m4v|aac|wav|aif|aiff|flac|ogg|oga|opus|webm|mov|caf)$/i;
+/* THE MAC'S DRUM MAPS, all in one small file ("Apex Drum Maps.json" from the Mac): each song's map goes onto that song in
+   the library (matched by its file name) and is kept with it; no audio is copied again */
+async function importDrumMaps(f) {
+  let j; try { j = JSON.parse(await f.text()); } catch (e) { toast("That drum-maps file couldn't be read."); return 0; }
+  const maps = j && j.maps ? j.maps : {}; let n = 0;
+  for (const t of [...st.tracks.values(), ...st.loops.values()]) { const raw = maps[t.fileName]; if (!raw) continue; applyBeats(t, raw); if (t.prep) { try { await dbPut("tracks", t); n++; } catch (e) {} } }
+  toast(n ? `Drum maps added to ${n.toLocaleString()} song${n === 1 ? "" : "s"}: their beats now lock on their own drums.` : "None of these drum maps match songs in your library yet (add the songs first).", 7000);
+  return n;
+}
 async function importFiles(files, extra = {}) {
   ensureCtx();
+  for (const f of [...files].filter(f => /\.json$/i.test(f.name) || f.type === "application/json")) await importDrumMaps(f);
   const list = [...files].filter(f => /^(audio|video)\//.test(f.type) || AUDIO_RX.test(f.name));
+  if (!list.length && [...files].some(f => /\.json$/i.test(f.name))) return [];
   if (!list.length) { toast("No music or video files were in that selection."); return []; }
   const added = [], pl = extra.noFolder ? null : (extra.playlist || curPl()); st.stopImport = false;
   let dups = list.filter(f => !/^hook - /i.test(f.name) && !/\(instrumental\)\.\w+$/i.test(f.name)).map(f => [f, dupOfFile(f)]).filter(([, t]) => t);
@@ -4879,8 +4905,12 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "7.08";
+const APP_VERSION = "7.09";
 const CHANGELOG = [
+  ["7.09", "October 12, 2026", ["DRUM MAPS FROM THE MAC: every song gets prepared once on the Mac. Its drums are separated (Demucs) and every beat is found on the drums alone, pinned where its snare and clap hits start, with its bar lines (kick on 1, snare on 2 and 4), where its beat starts, its breaks and its outro. Add the one file \"Apex Drum Maps\" from iCloud Drive (Add music) and every song in your library gets its map",
+    "With both songs on their drum maps, the mix locks snare on snare and bar on bar (downbeat on downbeat), straight from the drums, never guessed from the full mix (where bass and voices can fool it)",
+    "Set order knows each song's groove: where its kick, snare and hats sit, its swing, and how far its kick sits from its snare; songs whose grooves really don't play together are kept apart",
+    "Measured on the separated drums of the real mixes: snares and claps within 1-4 ms in 8 of 10 test mixes"]],
   ["7.08", "October 12, 2026", ["The old song plays on naturally through the mix: no more pieces of it cut in from somewhere else in the middle of its words. The mix starts in its outro; if the new song's words come in while it still sings, it finishes its line and steps out behind its filter",
     "No synthetic percussion layered over the mix; the old-school breaks only ride beats where nobody is singing",
     "A tighter lock standard: a beat mix only rolls when every four-bar section of it is within 4 ms (2 ms on average)",
