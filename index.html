@@ -1312,12 +1312,19 @@ function ensureCtx() {
   actx.addEventListener("statechange", () => { if (document.hidden) checkBg(); }); // the phone stopped the mixer: hand off right away
   master = actx.createGain(); // the full mix: everything the app plays meets here
   volNode = actx.createGain(); applyVol();
-  const limiter = () => { const c = actx.createDynamicsCompressor(); c.threshold.value = -1.5; c.knee.value = 1; c.ratio.value = 20; c.attack.value = 0.003; c.release.value = 0.2; return c; };
-  const safety = limiter(); // a gentle limiter so boosted quiet songs never distort
-  master.connect(volNode); volNode.connect(safety); safety.connect(actx.destination);
+  // THE MASTER STAGE: two songs locked together stack their kicks and snares right on top of each other (that's the point),
+  // so their peaks add up. A compressor with real headroom catches them, a trim takes off the compressor's own automatic
+  // make-up gain, and a soft ceiling just under full scale makes sure no peak ever clips (no distortion, on the phone or in
+  // a recording)
+  const limiter = () => { const c = actx.createDynamicsCompressor(); c.threshold.value = -9; c.knee.value = 6; c.ratio.value = 10; c.attack.value = 0.002; c.release.value = 0.15;
+    const trim = actx.createGain(); trim.gain.value = 0.82; const ceil = actx.createWaveShaper(), N = 2048, cv = new Float32Array(N);
+    for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x), y = a < 0.75 ? a : 0.75 + 0.2 * Math.tanh((a - 0.75) / 0.2); cv[i] = Math.sign(x) * y; }   // (the curve spans an input of -1..1: unity below 0.75, a soft shoulder up to 0.95, room left for a recording's encoder)
+    ceil.curve = cv; ceil.oversample = "2x"; c.connect(trim); trim.connect(ceil); return { input: c, output: ceil }; };
+  const safety = limiter();
+  master.connect(volNode); volNode.connect(safety.input); safety.output.connect(actx.destination);
   meter = actx.createAnalyser(); meter.fftSize = 512; volNode.connect(meter);
   // mix recorder taps the mix before the volume knob, so muting the speaker never silences a recording
-  if (actx.createMediaStreamDestination) { const recLim = limiter(); recDest = actx.createMediaStreamDestination(); master.connect(recLim); recLim.connect(recDest); }
+  if (actx.createMediaStreamDestination) { const recLim = limiter(); recDest = actx.createMediaStreamDestination(); master.connect(recLim.input); recLim.output.connect(recDest); }
   bus = actx.createGain(); bus.connect(master); // the music; dips while a DJ drop talks
   verb = actx.createConvolver(); verb.buffer = impulse(2.6);
   const verbWet = actx.createGain(); verbWet.gain.value = 0.55; verb.connect(verbWet); verbWet.connect(master);
@@ -2210,7 +2217,8 @@ async function startProMix() {
     // the looped bed (or intro groove) and the song are two separate sources: each gets its own fine offset first
     if (bPre >= 8 && !drumsBoth) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
       const mBed = part(0, tb), mSong = part(tb, TOT * P); if (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002) { const trial = shift.map((v, j) => v - (j < bPre ? mBed : mSong)), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } } }
-    for (let pass = 0; pass < 3 && !drumsBoth; pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
+    // (on drum maps the beats are left alone, unless a live drummer's hits wander off the map by more than 3 ms: then they're ridden too)
+    for (let pass = 0; pass < 3 && (!drumsBoth || sc(cur) > 0.003); pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
       // each beat takes the average of the windows that hold it, from its own part only (the bed's windows for the bed, the
       // song's for the song): a jump at the hand-over is fixed on each side instead of smeared across it
       const tb = bPre ? clock[bPre] + d : -1e9, partOf = t => t < tb - 0.001 ? 0 : 1;
@@ -2227,7 +2235,7 @@ async function startProMix() {
       if (!(bPre && Math.abs(tm - (clock[bPre] + d)) < 8 * P - 0.01 && Math.abs(tm - (clock[bPre] + d)) > 0)) sec16.push({ d: x.lag, clear: x.clear }); else if (bPre) sec16.push({ d: x.lag, clear: 0 }); }
     const good = sec16.filter(x => x.clear >= 1.1), res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
     const T = clock.map((t, j) => t + d + shift[j]);
-    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || worst <= 0.015) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
+    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || (worst <= 0.006 && rms <= 0.003)) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
       worst: +(worst * 1000).toFixed(1), rms: +(rms * 1000).toFixed(1), clear: 9, moved: Math.round(d * 1000), span: TOT, secs: sec16.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), fine: secs.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), oldLoop: !!aLoop, newLoop: bPre, bed: bLayer ? bedName || "its own beat break" : null } };
   };
   let warp = null;
@@ -2701,7 +2709,7 @@ async function startProMix() {
   // the extended section: live percussion over both locked beats, a snare roll into the mashup
   if (mode !== "cut" && master && tExt != null && exitAt == null) { const pk = percLayer(tExt, xExt, P, 0.32); moves.push(`extended beat: ${pk} percussion, snare roll`); }
 
-  if (exitAt != null && !(vp && vp.warp)) moves.push(`old song sang to beat ${vp.exit} at full volume, then echoed out on the beat`);
+  if (exitAt != null && !(vp && vp.warp)) moves.push(`old song sang to beat ${vp.exit} at full volume, then stepped out behind its filter`);
   if (vp && vp.mashVoice != null) moves.push("mashup: the new song's voice over the old song's instrumental");
   else if (vp && !vp.ride && !hookPlan && exitAt == null && ownHook && ownHook.for === nt.id && Math.abs(Nb / ownHook.h.hook.bpm - 1) <= 0.08 && karAt != null && karAt <= tMash + 0.01) {
     const beatsLen = (hookEnd(ownHook) - (ownHook.h.hook.lead || 0)) / (60 / ownHook.h.hook.bpm), bVoice = bVoiceT != null ? (bVoiceT - tCut) / P : totalB;
@@ -2734,7 +2742,7 @@ async function startProMix() {
   checks.push(["Hook", true, hookPlan ? "full sentence in a gap where nobody sings, then echoes out" : "none this time (no clear gap, or not this mix)"]);
   checks.push(["Stems", mode === "cut" || (stA && stB) || !master, mode === "cut" ? "not needed for an filter blend" : !master ? "classic mix: no instrumentals needed (the old song plays whole, then echoes out; no vocal remover)" : stA && stB ? "both songs' real instrumentals in step: clean vocals-out, clean voice for the mashup" : `${stA ? "" : "old song"}${!stA && !stB ? " and " : ""}${stB ? "" : "new song"} without its instrumental here: the vocal remover stands in (add Main Instrumentals for the clean sound)`]);
   checks.push(["Groove", true, mode === "cut" ? "filter blend" : warp && warp.info.ok ? `phrase blend: ${bLayer ? `the new song's sung intro rises in over 8 beats on a beat bed (${warp.info.bed === "its own beat break" ? "its own beat break from later in the song" : `a classic break: ${warp.info.bed}`}, until its own beat comes in)` : `the new song's beat (no words${bPre ? `, its ${bLoopB}-beat groove looped` : ""}) rises in over 8 beats`}, then ${XT} beats of both beats together (the extended beat mix), bass swap on beat ${8 + XT}${!bLayer && bBeat != null && bBeat - introAt > 2 ? `; it starts on its beat (skipped ${Math.round(bBeat - introAt)} s of intro with no beat)` : ""}` : !master ? `${Math.round((tSwap - tCut) / P)} beats of both songs locked: the new song's intro beat under the old song${bPre ? ` (its first ${bLoopB}-beat groove looped so the intro fills the mix)` : ""}${bBeat != null && bBeat - introAt > 2 ? `; it starts on its beat (skipped ${Math.round(bBeat - introAt)} s of intro with no beat)` : ""}` : `extended beat: 16 beats of both songs locked with live percussion, then ${vp && vp.mashVoice != null ? "the mashup (new voice over the old beat)" : "the new song steps forward"}`]);
-  checks.push(["Exit", true, mode === "cut" ? "old song echoes out" : warp && warp.info.ok ? "old song fades out over 8 beats behind a filter sweep (no echo)" : !master ? (vp && vp.oldLoop ? `old song's beat (no words) rides under the new one for ${vp.oldLoop.beats} beats, then fades` : vp && vp.echo ? "old song echoes out on the beat as the new voice comes in" : "old song's beat lingers under the new one for 16 beats, then out") : "old song rides under the new one for 32 beats, then out"]);
+  checks.push(["Exit", true, mode === "cut" ? "old song echoes out" : warp && warp.info.ok ? "old song fades out over 8 beats behind a filter sweep (no echo)" : !master ? (vp && vp.oldLoop ? `old song's beat (no words) rides under the new one for ${vp.oldLoop.beats} beats, then fades` : vp && vp.echo ? "old song steps out behind its filter as the new voice comes in" : "old song's beat lingers under the new one for 16 beats, then out") : "old song rides under the new one for 32 beats, then out"]);
   // the swap lands with an impact hit: it marks the drop and fills the instant the basslines trade
   if (mode !== "cut") loadSfx("impact").then(ib => { if (!ib || !mix || mix.to !== to) return; const s0 = actx.createBufferSource(), g0 = actx.createGain(); s0.buffer = ib; g0.gain.value = 0.45;
     s0.connect(g0); g0.connect(bus); s0.start(Math.max(actx.currentTime, tSwap + (bassK || 0) * P - peakTime(ib))); }).catch(() => {});
@@ -4905,8 +4913,11 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "7.09";
+const APP_VERSION = "7.10";
 const CHANGELOG = [
+  ["7.10", "October 13, 2026", ["No more distortion: when two songs lock together their kicks and snares stack, and the old limiter let those peaks clip (harsh and crunchy in the middle of a mix, on the phone and in recordings). A new master stage with real headroom and a soft ceiling just under full scale keeps every mix clean",
+    "Live drummers on drum maps: if a live band's hits wander off its map, the mix rides them section by section; a beat mix on drum maps only rolls when every four-bar section is within 6 ms",
+    "Apex Drum Maps: add the one file from iCloud Drive (Add music) and every song gets its map, no songs re-added"]],
   ["7.09", "October 12, 2026", ["DRUM MAPS FROM THE MAC: every song gets prepared once on the Mac. Its drums are separated (Demucs) and every beat is found on the drums alone, pinned where its snare and clap hits start, with its bar lines (kick on 1, snare on 2 and 4), where its beat starts, its breaks and its outro. Add the one file \"Apex Drum Maps\" from iCloud Drive (Add music) and every song in your library gets its map",
     "With both songs on their drum maps, the mix locks snare on snare and bar on bar (downbeat on downbeat), straight from the drums, never guessed from the full mix (where bass and voices can fool it)",
     "Set order knows each song's groove: where its kick, snare and hats sit, its swing, and how far its kick sits from its snare; songs whose grooves really don't play together are kept apart",
