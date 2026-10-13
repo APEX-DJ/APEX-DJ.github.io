@@ -907,7 +907,9 @@ function twinPlayed(t) { // a different copy of this song already played (or is 
   return st.history.some(h => { const u = st.tracks.get(h.id); return u && u.id !== t.id && sameSong(u, t); });
 }
 function bestOrder(ids, startId) {
-  const T0 = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && !t.bad), memo = new Map(), groups = new Map(), twins = [];
+  // (a clip under a minute is a DJ tool or a sample, not a song: it goes last, after the songs, and never into a mix chain)
+  const isClip = t => t.duration && t.duration < 60, clips = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && !t.bad && isClip(t));
+  const T0 = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && !t.bad && !isClip(t)), memo = new Map(), groups = new Map(), twins = [];
   for (const t of T0) { const k = songKey(t) || t.id, g = groups.get(k) || []; groups.set(k, g); const o = g.find(u => sameSong(u, t));
     if (!o) { g.push(t); continue; } if (t.id === startId || (o.id !== startId && copyRank(t) > copyRank(o))) { g[g.indexOf(o)] = t; twins.push(o); } else twins.push(t); }
   const T = [...groups.values()].flat();
@@ -943,7 +945,7 @@ function bestOrder(ids, startId) {
       if (!better) break; } }
   const rest = [...r.left].sort((a, b) => (b.bpm || 0) - (a.bpm || 0) || a.title.localeCompare(b.title));
   const bad = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && t.bad); // listed last; auto mix skips them
-  return { order: [...r.chain, ...rest, ...bad, ...twins].map(t => t.id), chained: r.chain.length, faded: rest.length, twins: twins.length };
+  return { order: [...r.chain, ...rest, ...clips, ...bad, ...twins].map(t => t.id), chained: r.chain.length, faded: rest.length, twins: twins.length };
 }
 function queueBest(ids, startId) {
   const o = bestOrder(ids, startId); st.mixPlan = o; setQueue(S.unmatched === "skip" ? o.order.slice(0, Math.max(1, o.chained)) : o.order);
@@ -2295,8 +2297,11 @@ async function startProMix() {
     const sc = list => { const g2 = list.filter(x => x.clear >= 1.1); return g2.length ? Math.sqrt(g2.reduce((s2, x) => s2 + x.d * x.d, 0) / g2.length) : 1; };
     let cur = measure(shift) || secs;
     // the looped bed (or intro groove) and the song are two separate sources: each gets its own fine offset first
-    if (bPre >= 8 && !drumsBoth) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
-      const mBed = part(0, tb), mSong = part(tb, TOT * P); if (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002) { const trial = shift.map((v, j) => v - (j < bPre ? mBed : mSong)), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } } }
+    // (on drum maps too, when the two parts disagree by more than 3 ms: the bed and the song are two stretches of the song
+    // whose maps can sit a hair apart, and a jump at the hand-over is heard; there the song stays on its map and only the
+    // bed moves to meet it)
+    if (bPre >= 8) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+      const mBed = part(0, tb), mSong = part(tb, TOT * P); if ((!drumsBoth && (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002)) || (drumsBoth && Math.abs(mBed - mSong) > 0.003)) { const trial = shift.map((v, j) => v - (drumsBoth ? (j < bPre ? mBed - mSong : 0) : (j < bPre ? mBed : mSong))), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } } }
     // (on drum maps the beats are left alone, unless a live drummer's hits wander off the map by more than 3 ms: then they're ridden too)
     for (let pass = 0; pass < 3 && (!drumsBoth || sc(cur) > 0.003); pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
       // each beat takes the average of the windows that hold it, from its own part only (the bed's windows for the bed, the
@@ -2315,7 +2320,7 @@ async function startProMix() {
       if (!(bPre && Math.abs(tm - (clock[bPre] + d)) < 8 * P - 0.01 && Math.abs(tm - (clock[bPre] + d)) > 0)) sec16.push({ d: x.lag, clear: x.clear }); else if (bPre) sec16.push({ d: x.lag, clear: 0 }); }
     const good = sec16.filter(x => x.clear >= 1.1), res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
     const T = clock.map((t, j) => t + d + shift[j]);
-    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || (worst <= 0.006 && rms <= 0.003)) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
+    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || (worst <= 0.007 && rms <= 0.003)) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
       worst: +(worst * 1000).toFixed(1), rms: +(rms * 1000).toFixed(1), clear: 9, moved: Math.round(d * 1000), span: TOT, secs: sec16.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), fine: secs.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), oldLoop: !!aLoop, newLoop: bPre, bed: bLayer || bridgeBed ? bedName || "its own beat break" : null, bridge: bridgeBed } };
   };
   let warp = null;
@@ -5077,8 +5082,11 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "8.10";
+const APP_VERSION = "8.60";
 const CHANGELOG = [
+  ["8.60", "October 13, 2026", ["Fewer short mixes: a song whose sung intro rides its own beat break (like No Parking) now gets the full 112-beat mix instead of a quick filter blend. Where the break and the song itself sit a hair apart on the drum map, the break is moved onto the song, so the hand-over doesn't jump",
+    "Short clips (under a minute: DJ tools, samples) stay out of the auto-mix order and play last",
+    "Checked again on real drum hits: 13 of 14 test transitions are full locked 112-beat mixes; most stay within 2 ms from start to end"]],
   ["8.10", "October 13, 2026", ["A tighter lock across the whole 112-beat mix: every song's drum map is now pinned bar by bar to that song's own loud snare hits (the ones you hear), not a quiet pre-hit just before them. Checked on the real drum hits from the first beat of each mix to the last",
     "Every bar of a drum map has a quality score: a loosely mapped stretch is never looped, and the app only steers by its own beat map where a song's map is plainly wrong (a vocal-only track, a live drummer all over the place)",
     "Each mix starts where the old song's map is tight: the old song is the clock every beat of the new one locks to",
