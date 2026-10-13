@@ -874,6 +874,15 @@ function mixMode(a, b, rateA = 1) {
    further one. A song only joins the chain when the two really mix (the match limit: tempo close, never 130 into 107 just
    because the key's the same). Within a key the tempo climbs gently rather than jumping around. */
 const KEY_RANK = { perfect: 0, good: 1, ok: 2, unknown: 2, clash: 3 };
+/* DO THEIR GROOVES FIT? From the two songs' drum maps (the Mac's): where their kick, snare and hats sit in the bar and how
+   swung their hats are. 0 = the same groove; up to 40 = a straight groove against a swung one, a four-on-the-floor against a
+   breakbeat. Without drum maps: 0 (unknown, nothing to hold against them). */
+function grooveCost(a, b) {
+  const fa = a.prep && a.prep.fp, fb = b.prep && b.prep.fp; if (!fa || !fb) return 0;
+  let dot = 0, na = 0, nb2 = 0; for (const k of ["kick", "snare", "hat"]) for (let i = 0; i < 16; i++) { const x = (fa[k] || [])[i] || 0, y = (fb[k] || [])[i] || 0, w = k === "hat" ? 0.5 : 1; dot += w * x * y; na += w * x * x; nb2 += w * y * y; }
+  const sim = na && nb2 ? dot / Math.sqrt(na * nb2) : 1, sw = Math.abs((a.prep.sw || 0) - (b.prep.sw || 0));
+  return clamp((1 - sim) * 60, 0, 25) + clamp(sw * 0.75, 0, 15);
+}
 function bestOrder(ids, startId) {
   const T = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && !t.bad), memo = new Map();
   if (!T.length) return { order: [...new Set(ids)].filter(id => st.tracks.has(id)), chained: 0, faded: 0 };
@@ -885,7 +894,7 @@ function bestOrder(ids, startId) {
       for (const t of left) { const p = pair(cur, t); if (!p.ok) continue;
         const up = p.gap >= -0.3 ? 0 : 0.8;                               // a gentle climb beats a drop
         const dE = (t.energy || 5) - (cur.energy || 5), flow = dE >= 0 && dE <= 1 ? 0 : 0.3;
-        const c = p.kr * 100 + Math.abs(p.gap) * 10 + up * 10 + flow;      // key first, then the closest tempo
+        const c = p.kr * 100 + Math.abs(p.gap) * 10 + up * 10 + flow + grooveCost(cur, t);   // key first, then tempo and groove that fit
         if (c < bc) { bc = c; best = t; } }
       if (!best) break; chain.push(best); left.delete(best); cur = best;
     }
@@ -901,6 +910,11 @@ function bestOrder(ids, startId) {
     for (const t of starts.filter(Boolean)) { const c = chainFrom(t); if (!r || c.chain.length > r.chain.length) r = c; }
   }
   if (!r) return { order: [], chained: 0, faded: 0 };
+  { const cost = (a, b) => { const p = pair(a, b); if (!p.ok) return 1e6; const dE = (b.energy || 5) - (a.energy || 5); return p.kr * 100 + Math.abs(p.gap) * 10 + (p.gap >= -0.3 ? 0 : 8) + (dE >= 0 && dE <= 1 ? 0 : 0.3) + grooveCost(a, b); };
+    const ch = r.chain; for (let pass = 0; pass < 3; pass++) { let better = false;
+      for (let i = 1; i + 2 < ch.length; i++) { const a = ch[i - 1], b = ch[i], c2 = ch[i + 1], d2 = ch[i + 2];   // try b and c2 the other way round
+        if (cost(a, c2) + cost(c2, b) + cost(b, d2) + 0.01 < cost(a, b) + cost(b, c2) + cost(c2, d2)) { ch[i] = c2; ch[i + 1] = b; better = true; } }
+      if (!better) break; } }
   const rest = [...r.left].sort((a, b) => (b.bpm || 0) - (a.bpm || 0) || a.title.localeCompare(b.title));
   const bad = [...new Set(ids)].map(id => st.tracks.get(id)).filter(t => t && t.bad); // listed last; auto mix skips them
   return { order: [...r.chain, ...rest, ...bad].map(t => t.id), chained: r.chain.length, faded: rest.length };
@@ -936,7 +950,7 @@ function readID3(buf) {
       else { id = strAt(u, p, 4); fsz = ver === 4 ? syncsafe(u, p + 4) : be32(u, p + 4); h = 10; }
       if (!/^[A-Z0-9]{3,4}$/.test(id) || fsz <= 0 || p + h + fsz > end) break;
       if (map[id]) out[map[id]] = decText(u.subarray(p + h, p + h + fsz));
-      else if (id === "TXXX") { const v = decText(u.subarray(p + h, p + h + fsz)); const m = /^APEX_(EXPLICIT|ANALYSIS|HOOK|DROP|INST|LOOP|CLEAN), (.*)$/s.exec(v); if (m) out[{ EXPLICIT: "explicit", ANALYSIS: "apex", HOOK: "hook", DROP: "drop", INST: "inst", LOOP: "loop", CLEAN: "clean" }[m[1]]] = m[2]; }
+      else if (id === "TXXX") { const v = decText(u.subarray(p + h, p + h + fsz)); const m = /^APEX_(EXPLICIT|ANALYSIS|HOOK|DROP|INST|LOOP|CLEAN|BEATS), (.*)$/s.exec(v); if (m) out[{ EXPLICIT: "explicit", ANALYSIS: "apex", HOOK: "hook", DROP: "drop", INST: "inst", LOOP: "loop", CLEAN: "clean", BEATS: "beats" }[m[1]]] = m[2]; }
       p += h + fsz;
     }
   }
@@ -960,7 +974,7 @@ function readMP4(buf) {
       if (inIlst && type === "----") { // iTunes-style custom tags: the Mac's song data on .m4a files (APEX_ANALYSIS and friends)
         let q = p + h, name = "", val = null;
         while (q + 8 <= p + size) { const cs = dv.getUint32(q), ct = strAt(u, q + 4, 4); if (cs < 8) break; if (ct === "name") name = utf8(u.subarray(q + 12, q + cs)); else if (ct === "data") val = utf8(u.subarray(q + 16, q + cs)); q += cs; }
-        const m = /^APEX_(EXPLICIT|ANALYSIS|HOOK|DROP|INST|LOOP|CLEAN)$/.exec(name); if (m && val != null) out[{ EXPLICIT: "explicit", ANALYSIS: "apex", HOOK: "hook", DROP: "drop", INST: "inst", LOOP: "loop", CLEAN: "clean" }[m[1]]] = val;
+        const m = /^APEX_(EXPLICIT|ANALYSIS|HOOK|DROP|INST|LOOP|CLEAN|BEATS)$/.exec(name); if (m && val != null) out[{ EXPLICIT: "explicit", ANALYSIS: "apex", HOOK: "hook", DROP: "drop", INST: "inst", LOOP: "loop", CLEAN: "clean", BEATS: "beats" }[m[1]]] = val;
       } else if (inIlst) {
         const d = p + h;
         if (d + 16 <= p + size && strAt(u, d + 4, 4) === "data") {
@@ -1834,6 +1848,25 @@ function grooveEnv(buf, pos, dur) {
   let mu = 0; for (let q = 0; q < m; q++) mu += out[q]; mu /= m; for (let q = 0; q < m; q++) out[q] = Math.max(0, out[q] - mu);
   return out;
 }
+/* THE MAC'S DRUM MAP (APEX_BEATS): every beat of the song found on its drums alone (Demucs separates them), pinned where the
+   kick and snare hits start; its bar lines; bar by bar how much drums and voice it has; its groove fingerprint. Carried in
+   the song's own tags, so the app never has to guess the beat from the full mix (bass, vocals and synths can fool that). */
+function applyBeats(t, raw) {
+  if (!raw) return; try { const j = JSON.parse(raw); if (!j || !j.b) return; t.prep = { v: j.v, b: j.b, bar0: j.bar0 | 0, dr: j.dr || "", vo: j.vo || "", fp: j.fp || null, sw: +j.sw || 0 }; _prepBeats.delete(t.id); } catch (e) {}
+}
+const _prepBeats = new Map();
+function prepBeats(t) {   // the song's beat times (seconds, as this app decodes it)
+  if (!t || !t.prep || !t.prep.b) return null; if (_prepBeats.has(t.id)) return _prepBeats.get(t.id);
+  try { const bin = atob(t.prep.b), u = new Uint8Array(bin.length); for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(i);
+    const dv = new DataView(u.buffer); let x = dv.getUint32(0, true) / 10000; const out = [x]; for (let i = 4; i + 1 < u.length; i += 2) { x += dv.getUint16(i, true) / 10000; out.push(x); }
+    _prepBeats.set(t.id, out); return out; } catch (e) { return null; }
+}
+/* the beats of a stretch of a song: from its drum map when the Mac made one, otherwise found here (beatMap) */
+function beatsFor(t, buf, t0, t1, P0, near) {
+  const pb = prepBeats(t);
+  if (pb && pb.length > 8 && pb[0] <= Math.max(0, t0) + P0 && pb[pb.length - 1] >= Math.min(buf.duration - 1, t1) - P0) { const out = pb.filter(x => x >= t0 - 0.002 && x <= t1 + 0.002); if (out.length >= 6) { out.fromDrums = true; return out; } }
+  return beatMap(buf, t0, t1, P0, near);
+}
 /* THE BEAT MAP: the song's own MIDI clock. Every beat of a stretch of a song (song seconds), the way a dynamic beat grid
    in pro DJ software follows a live drummer: a beat tracker finds the path of beats that best fits its hits (snares, claps,
    kick clicks and kicks) while letting the tempo move a little from beat to beat, then each beat is pinned on its hits to a
@@ -2011,6 +2044,10 @@ async function startProMix() {
   // without singing is still skipped.)
   let bLayer = false;
   if (!master && mode !== "cut" && bBeat != null && bBeat - bStart >= 4 * pB - 0.05 && bBeat - bStart <= 64 * pB) { const sf = singFrac(nt, bStart, bBeat); if (sf != null && sf >= 0.25) bLayer = true; }
+  // ...but only when the old song's words are done by then: if it still sings through its outro, keeping the new song's sung
+  // intro would cut the mix short (two voices never sing at once), so the new song starts on its beat instead and the mix
+  // keeps its full length
+  if (bLayer) { const a0 = M + slice * pA, a1 = Math.min(endPoint(from), a0 + (Math.max(8, mixLock()) + 16) * pA), sfA = singFrac(ft, a0, a1); if (sfA == null ? vocalness(from.el.buf, a0, a1) > 0.25 : sfA > 0.03) bLayer = false; }
   const bIntro = bStart;
   if (bBeat != null && bStart < bBeat - 0.05) bStart = bBeat;
   let vocIn = leadVocalStart(nt, to.el.buf, (bLayer ? bIntro : bStart) + 0.5 * pB, pB);   // its lead vocal (from the vocal map)
@@ -2086,47 +2123,31 @@ async function startProMix() {
     if (!from.el.buf || !to.el.buf) return fail(1);
     const K = TOT + 8, near = la ? la.anchor : (ft.grid ? ft.grid.downbeat : null), nearB = lb ? lb.anchor : oB;
     const aLo = Math.min(aCut, endLoop ? endLoop[0] : aCut) - 4 * pA, aHi = endLoop ? endLoop[1] + 2 * pA : aCut + (K + 6) * pA;
-    const aMap = beatMap(from.el.buf, aLo, aHi, pA, near); if (!aMap || aMap.length < 8) return fail(2);
+    const aMap = beatsFor(ft, from.el.buf, aLo, aHi, pA, near); if (!aMap || aMap.length < 8) return fail(2);
     // the old song's own beats on the mix clock (it plays on at its own speed from the cut-in, looping its last bars if it must)
     const clock = []; { const dt = 0.002; for (let t = tCut - 0.5 * P; t < tCut + (K + 3) * P && clock.length <= K + 2; t += dt) {
       const p0 = wrapA(aCut + (t - tCut) * rAN), p1 = wrapA(aCut + (t + dt - tCut) * rAN); if (p1 <= p0) continue;
       for (const x of aMap) { if (x >= p1) break; if (x >= p0) clock.push(t + (x - p0) / rAN); } } }
     if (clock.length < K) return fail(3);
-    // does the old song still sing while the two beats are together (beats 8-32)? then 16 beats of its beat without words
+    // THE OLD SONG PLAYS NATURALLY (no part of it is ever cut in from somewhere else). Its words may ride at full volume over
+    // the new song's beat; only if the new song's own words come in while the old one still sings does the old song finish
+    // its line there and step out behind its filter (two voices never sing at once)
     const aPosT = t => wrapA(aCut + (t - tCut) * rAN), sungA = t => singsAt(ft, aPosT(t));
-    let aLoop = null, kX = null;
-    const vB = vocIn != null ? Math.max(1, Math.min(8, Math.floor(bPre + (vocIn - (bStart + bPre * pB)) / pB))) : 8;   // the new song's first words (beats), at most 8
-    { let sings = 0; for (let t = tCut + vB * P; t < tCut + TOT * P; t += P / 4) if (sungA(t)) sings++;
-      const unknown = !Array.isArray(ft.vs) && vocalness(from.el.buf, aPosT(tCut + vB * P), aPosT(tCut + TOT * P)) > 0.3;
-      if (sings >= 4 || unknown) {
-        let tX = tCut + vB * P; if (Array.isArray(ft.vs)) for (let t = tCut + vB * P; t >= tCut; t -= P / 8) if (sungA(t - P / 8) && !sungA(t)) { tX = t; break; }
-        kX = Math.max(1, Math.round((tX - tCut) / P));
-        const ks = songKicks(from.el.buf), body = lowBody(from.el.buf, pA), kicksIn = (x0, x1) => { let n = 0; for (const x of ks) { if (x >= x1) break; if (x >= x0) n++; } return n; };
-        let best = null, bd = 1e9;
-        for (let k = -16; k <= 24; k++) { const c = aCut + k * 4 * pA; if (c < 0 || c + 17 * pA > endPoint(from)) continue;
-          const sf = singFrac(ft, c, c + 16 * pA), quiet = sf != null ? sf <= 0.04 : vocalness(from.el.buf, c, c + 16 * pA) < 0.12;
-          if (quiet && kicksIn(c, c + 16 * pA) >= 10 && lowDb(from.el.buf, c, c + 16 * pA) > body - 6 && Math.abs(c - aPosT(tX)) < bd) { bd = Math.abs(c - aPosT(tX)); best = c; } }
-        if (best != null) { const lm = beatMap(from.el.buf, best - 2 * pA, best + 20 * pA, pA, best);
-          if (lm && lm.length >= 18) { let j0 = 0; for (let i = 1; i < lm.length; i++) if (Math.abs(lm[i] - best) < Math.abs(lm[j0] - best)) j0 = i; if (j0 + 16 < lm.length) aLoop = lm.slice(j0, j0 + 17); }
-          if (aLoop) { // its beats sit where the song's own beats do (the two grooves of the same song matched directly)
-            const pk = aPosT(clock[kX]), eL = grooveEnv(from.el.buf, tau => aLoop[0] + tau, 8 * pA), eR = grooveEnv(from.el.buf, tau => pk + tau, 8 * pA);
-            if (eL && eR) { const x = grooveLag(eL, eR, 40); if (x.clear >= 1.05) aLoop = aLoop.map(v => v - x.lag); } } }
-        if (aLoop) { // the clock carries on with the loop's beats (on the same bar: beat kX of the mix is loop beat kX mod 16)
-          let tt = clock[kX]; clock.length = kX + 1;
-          for (let k = kX; clock.length <= K + 2; k++) { const j = k % 16; tt += (aLoop[j + 1] - aLoop[j]) / rAN; clock.push(tt); }
-        } else kX = null;
-      } }
+    const vB = vocIn != null ? Math.max(1, Math.floor(bPre + (vocIn - (bStart + bPre * pB)) / pB)) : 1e9;   // the new song's first words (beats)
+    let aStop = null, aLoop = null, kX = null;
+    if (vB < TOT) { let sings = 0; for (let t = tCut + vB * P; t < tCut + TOT * P; t += P / 4) if (sungA(t)) sings++;
+      if (sings >= 2) { let tX = tCut + vB * P; if (Array.isArray(ft.vs)) for (let t = tCut + vB * P; t >= tCut + P; t -= P / 8) if (sungA(t - P / 8) && !sungA(t)) { tX = t; break; } aStop = Math.max(tCut + P, tX); } }
     // the new song's beats in the order they will play: its looped groove (bPre beats), then the song from its real start
-    const bReal = bStart + bPre * pB, bMap = beatMap(to.el.buf, bReal - 2 * pB, bReal + (K + 6) * pB, pB, nearB); if (!bMap) return fail(4);
+    const bReal = bStart + bPre * pB, bMap = beatsFor(nt, to.el.buf, bReal - 2 * pB, bReal + (K + 6) * pB, pB, nearB); if (!bMap) return fail(4);
     let r0 = 0; for (let i = 1; i < bMap.length; i++) if (Math.abs(bMap[i] - bReal) < Math.abs(bMap[r0] - bReal)) r0 = i;
     let lpB = null, bedBuf = to.el.buf, bedName = null; if (bPre && bLayer && bLoopFrom == null) { // no break of its own: a classic break from the Beat Loops
       const br = bridgeLoop(Nb); if (!br) return fail(20); bedBuf = br.buf; bedName = br.h.loop.from; const lb2 = br.h.loop.beats || 16, Pl = 60 / br.h.loop.bpm;
       const lm = beatMap(br.buf, 0, Math.min(br.buf.duration, lb2 * Pl + 0.04), Pl, 0); if (!lm || lm.length < lb2) return fail(21);
       bLoopB = Math.min(16, lb2); lpB = lm.slice(0, bLoopB).map(x => Math.max(0, x)); lpB.push(Math.min(br.buf.duration, lpB[bLoopB - 1] + (lpB[bLoopB - 1] - lpB[0]) / (bLoopB - 1))); }
-    if (bPre && !lpB) { const lm = loopIsIntro ? bMap.slice(r0) : beatMap(to.el.buf, bLoopFrom - 2 * pB, bLoopFrom + (bLoopB + 4) * pB, pB, bLoopFrom); if (!lm) return fail(5);
+    if (bPre && !lpB) { const lm = loopIsIntro ? bMap.slice(r0) : beatsFor(nt, to.el.buf, bLoopFrom - 2 * pB, bLoopFrom + (bLoopB + 4) * pB, pB, bLoopFrom); if (!lm) return fail(5);
       let j0 = 0; if (!loopIsIntro) for (let i = 1; i < lm.length; i++) if (Math.abs(lm[i] - bLoopFrom) < Math.abs(lm[j0] - bLoopFrom)) j0 = i;
       if (j0 + bLoopB >= lm.length) return fail(6); lpB = lm.slice(j0, j0 + bLoopB + 1);
-      if (!loopIsIntro) { const eL = grooveEnv(to.el.buf, tau => lpB[0] + tau, 8 * pB), eR = grooveEnv(to.el.buf, tau => bMap[r0] + tau, 8 * pB);
+      if (!loopIsIntro && !bMap.fromDrums) { const eL = grooveEnv(to.el.buf, tau => lpB[0] + tau, 8 * pB), eR = grooveEnv(to.el.buf, tau => bMap[r0] + tau, 8 * pB);
         if (eL && eR) { const x = grooveLag(eL, eR, 40); if (x.clear >= 1.05) lpB = lpB.map(v => v - x.lag); } } }
     const seqB = []; for (let j = 0; j < bPre; j++) { const i = j % bLoopB; seqB.push([lpB[i], lpB[i + 1], true]); }
     for (let i = r0; i + 1 < bMap.length && seqB.length <= K; i++) seqB.push([bMap[i], bMap[i + 1], false]);
@@ -2156,10 +2177,14 @@ async function startProMix() {
           if (at(Lc) > 1.25 * at(bl) && v[Lc + W] >= 0.95 * v[bl + W]) bl = Lc; } }
       // the new song plays bl ms LATE at d = 0: it has to come in that much earlier
       d = -bl / 1000; }
+    // BOTH SONGS ON THEIR DRUM MAPS: every beat of each is where its own drums hit, so the beats meet hit on hit by themselves;
+    // the full-mix groove (voices and synths in it) is only a safety check and never moves them
+    const drumsBoth = !!(aMap.fromDrums && bMap.fromDrums && (!bPre || bedBuf !== to.el.buf || (lpB && lpB.fromDrums !== false)));
+    if (drumsBoth) d = 0;
     const eB = envB2(tau => posB(tCut + tau, d), span); if (!eB) return fail(10);
     const secs = [], nS = Math.round(8 * P * 1000); for (let w = 0; w + nS <= Math.min(eA.length, eB.length); w += Math.round(4 * P * 1000)) { const x = grooveLag(eA.subarray(w, w + nS), eB.subarray(w, w + nS), 40); secs.push({ d: x.lag, clear: x.clear }); }
     // a constant leftover (the two maps' idea of the beat differs by a hair) is taken out too
-    const gd = secs.filter(x => x.clear >= 1.1); if (gd.length >= 3) { const md = gd.map(x => x.d).sort((x, y) => x - y)[Math.floor(gd.length / 2)]; d -= md; for (const x of secs) x.d -= md; }
+    const gd = drumsBoth ? [] : secs.filter(x => x.clear >= 1.1); if (gd.length >= 3) { const md = gd.map(x => x.d).sort((x, y) => x - y)[Math.floor(gd.length / 2)]; d -= md; for (const x of secs) x.d -= md; }
     // RIDING THE BEAT: whatever is left in a section (a drummer pushing a bar, two maps that read a fill differently) is
     // taken out by moving those beats of the new song onto it; kept only if it really brings every section closer
     let shift = clock.map(() => 0);
@@ -2168,9 +2193,9 @@ async function startProMix() {
     const sc = list => { const g2 = list.filter(x => x.clear >= 1.1); return g2.length ? Math.sqrt(g2.reduce((s2, x) => s2 + x.d * x.d, 0) / g2.length) : 1; };
     let cur = measure(shift) || secs;
     // the looped bed (or intro groove) and the song are two separate sources: each gets its own fine offset first
-    if (bPre >= 8) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+    if (bPre >= 8 && !drumsBoth) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
       const mBed = part(0, tb), mSong = part(tb, TOT * P); if (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002) { const trial = shift.map((v, j) => v - (j < bPre ? mBed : mSong)), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } } }
-    for (let pass = 0; pass < 3; pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
+    for (let pass = 0; pass < 3 && !drumsBoth; pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
       // each beat takes the average of the windows that hold it, from its own part only (the bed's windows for the bed, the
       // song's for the song): a jump at the hand-over is fixed on each side instead of smeared across it
       const tb = bPre ? clock[bPre] + d : -1e9, partOf = t => t < tb - 0.001 ? 0 : 1;
@@ -2180,10 +2205,15 @@ async function startProMix() {
     secs.length = 0; secs.push(...cur);
     // (a window that straddles the hand-over from the bed to the song hears two different sources at once: not counted)
     if (bPre) { const tb = clock[bPre] + d; for (const x of secs) if (Math.abs(x.t - tb) < 4 * P - 0.01) x.clear = 0; }
-    const good = secs.filter(x => x.clear >= 1.1), res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
+    // THE GO / NO-GO, on 16-beat sections (four bars) every 8 beats: a single drum fill can't swing it the way it can an
+    // 8-beat window (where the two songs simply play different hits for a bar), but any real slip still shows
+    const e16 = envB2(tau => posBs(tCut + tau, d, shift), span), n16 = Math.round(16 * P * 1000), sec16 = [];
+    if (e16) for (let w = 0; w + n16 <= Math.min(eA.length, e16.length); w += Math.round(8 * P * 1000)) { const x = grooveLag(eA.subarray(w, w + n16), e16.subarray(w, w + n16), 40), tm = tCut + (w + n16 / 2) / 1000;
+      if (!(bPre && Math.abs(tm - (clock[bPre] + d)) < 8 * P - 0.01 && Math.abs(tm - (clock[bPre] + d)) > 0)) sec16.push({ d: x.lag, clear: x.clear }); else if (bPre) sec16.push({ d: x.lag, clear: 0 }); }
+    const good = sec16.filter(x => x.clear >= 1.1), res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
     const T = clock.map((t, j) => t + d + shift[j]);
-    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, posA, posB: t => posBs(t, d, shift), K, info: { kind: "beat map", ok: good.length >= 3 && good.length >= 0.5 * secs.length && worst <= 0.008 && rms <= 0.0035, n: good.length, of: secs.length,
-      worst: +(worst * 1000).toFixed(1), rms: +(rms * 1000).toFixed(1), clear: 9, moved: Math.round(d * 1000), span: TOT, secs: secs.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), oldLoop: !!aLoop, newLoop: bPre, bed: bLayer ? bedName || "its own beat break" : null } };
+    return { T, clockA: clock, seqB, seqDeck, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || worst <= 0.015) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
+      worst: +(worst * 1000).toFixed(1), rms: +(rms * 1000).toFixed(1), clear: 9, moved: Math.round(d * 1000), span: TOT, secs: sec16.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), fine: secs.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), oldLoop: !!aLoop, newLoop: bPre, bed: bLayer ? bedName || "its own beat break" : null } };
   };
   let warp = null;
   if (mode !== "cut") {
@@ -2221,7 +2251,7 @@ async function startProMix() {
         { const k = bl + W, y0 = k > 0 ? v[k - 1] : v[k], y2 = k < 2 * W ? v[k + 1] : v[k], den = y0 - 2 * v[k] + y2; bStart = Math.max(bMin, bStart + rBx * (bl + clamp(den ? 0.5 * (y0 - y2) / den : 0, -0.5, 0.5)) / 1000); }
         // 2) section by section (16 beats, every 8): a steady drift = a speed difference, fitted across the whole blend
         // (a 32-beat classic blend is checked in 8-beat sections every 4 beats, a long master mix in 16-beat ones every 8)
-        const secB = span >= 64 * P ? 16 : 8, sections = () => { eB = envB(); const out = [], n16 = Math.round(secB * P * 1000);
+        const secB = span >= 40 * P ? 16 : 8, sections = () => { eB = envB(); const out = [], n16 = Math.round(secB * P * 1000);
           for (let w = 0; w + n16 <= Math.min(eA.length, eB.length); w += Math.round(secB / 2 * P * 1000)) {
             const x = grooveLag(eA.subarray(w, w + n16), eB.subarray(w, w + n16), 40); out.push({ t: (w + n16 / 2) / 1000, d: x.lag, clear: x.clear }); }
           return out; };
@@ -2264,7 +2294,7 @@ async function startProMix() {
         //    sections of a classic blend read a little noisier, so any one within 8 ms and all of them 3.5 ms on average)
         secs = sections(); good = usable(secs);
         const res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
-        const tight = secB >= 16 ? worst <= 0.004 : worst <= 0.008 && rms <= 0.0035;
+        const tight = secB >= 16 ? worst <= 0.004 && rms <= 0.002 : worst <= 0.005 && rms <= 0.002;
         kickInfo = { kind: "groove", start: bStart, rate: rBx, n: good.length, of: secs.length, rms: +(rms * 1000).toFixed(1), worst: +(worst * 1000).toFixed(1), clear: +clear.toFixed(2), kickTie, moved: bl, span: Math.round(span / P),
           speedFix: +((rBx / rB - 1) * 100).toFixed(3), bends: bend.length, maxBend: bend.length ? +(Math.max(...bend.map(([, r]) => Math.abs(r / rBx - 1))) * 100).toFixed(2) : 0, secs: secs.map(x => `${ms(x.d)}${x.clear >= 1.1 ? "" : "?"}`).join(" "),
           ok: (clear >= 1.12 || (kickTie != null && kickTie >= 1.25) || (Math.abs(bl) <= 0.3 * W && (kickTie == null || kickTie >= 0.8))) && good.length >= 2 && good.length >= 0.5 * secs.length && tight };
@@ -2351,7 +2381,8 @@ async function startProMix() {
     // A CLASSIC BREAK FOR VIBE (every other mix, with the Beat Loops here): Apache, Funky Drummer, Planet Rock... riding under
     // the 16 beats together, its every beat on the clock, no low end of its own (the two basslines stay clean)
     const k0 = 8 + Math.max(0, XT - 16), k1 = 8 + XT;   // the last 16 beats before the bass swap
-    if ((mixCount + 1) % 3 !== 0 && !(warp.bedBuf !== to.el.buf)) try { const br = bridgeLoop(Nb);   // (flavor only: it can never stop the mix)
+    let wordsThere = false; for (let j = k0; j < k1 && j < T.length; j++) { const t = T[j]; if (singsAt(ft, warp.posA(t)) || (j >= bPre && singsAt(nt, warp.posB(t))) || (warp.aStop != null && t >= warp.aStop - 0.01)) { wordsThere = true; break; } }
+    if (!wordsThere && (mixCount + 1) % 3 !== 0 && !(warp.bedBuf !== to.el.buf)) try { const br = bridgeLoop(Nb);   // (flavor only, over beats with no words: it can never stop the mix)
       if (br) { const lb2 = br.h.loop.beats || 16, Pl = 60 / br.h.loop.bpm, lm = beatMap(br.buf, 0, Math.min(br.buf.duration, lb2 * Pl + 0.04), Pl, 0);
         if (lm && lm.length >= 16) { const L = lm.slice(0, 16).map(x => Math.max(0, x)); L.push(Math.min(br.buf.duration, L[15] + (L[15] - L[0]) / 15)); const src = actx.createBufferSource(), hp = biq("highpass", 140, 0.7), g = actx.createGain();
           src.buffer = br.buf; src.loop = true; src.loopStart = L[0]; src.loopEnd = L[16]; for (let j = k0; j < k1 && j + 1 < T.length; j++) { const i = (j - k0) % 16; src.playbackRate.setValueAtTime(clamp((L[i + 1] - L[i]) / (T[j + 1] - T[j]), 0.5, 2), T[j]); }
@@ -2459,7 +2490,7 @@ async function startProMix() {
   // THE VOCAL PLAN: the old voice ends on a finished line and echoes out on the beat; the new words come in after it;
   // a hook only sings in a gap where neither song does (see planVocals)
   const totalB = L1 + xExt + xMash + xLinger, swapB = L1 + xExt + xMash, mashB = L1 + xExt;
-  let vp = null, hookPlan = null, bHoldT = null, bVoiceT = null, vEcho = false, oldLoopInfo = null;
+  let vp = null, hookPlan = null, bHoldT = null, bVoiceT = null, vEcho = false, oldLoopInfo = null, vp_stop = null;
   if (mode !== "cut" && master) {
     vp = planVocals({ ft, nt, aPos: b => b < 0 ? M + ((b + loopLen) % slice) * pA : wrapA(aCut + b * pA), bPos: b => bStart + b * pB, startBeat: -loopLen, total: totalB, swapBeat: swapB, aOutBy: mashB, holdOk: !!stB });
     const H = vp.H, tOf = h => h >= 0 ? tCut + (h / H) * P : tCut + (h / H) * beatLoop;
@@ -2535,17 +2566,14 @@ async function startProMix() {
     // in after beat 32, at their full volume); the old song keeps its own voice at full volume, but if it would still sing
     // while the two beats are together, 16 beats of its own beat without words take over at the end of a line
     let oldLoop = null;
-    if (warp.aLoop) { const aL = warp.aLoop, tA0 = warp.clockA[warp.kX], j0 = warp.kX % 16;
-      const src = actx.createBufferSource(), ls = biq("lowshelf", 200), hp = biq("highpass", 10, 0.7), g = actx.createGain(); src.buffer = from.el.buf; src.loop = true; src.loopStart = aL[0]; src.loopEnd = aL[16]; src.playbackRate.value = rAN;
-      src.connect(hp); hp.connect(ls); ls.connect(g); g.connect(bus); const gl = gA * normGain(ft);
-      g.gain.setValueAtTime(0.0001, tA0 - 0.03); g.gain.linearRampToValueAtTime(gl, tA0 + 0.03); g.gain.setValueAtTime(gl, tSwap); g.gain.linearRampToValueAtTime(0.0001, tEnd);
-      ls.gain.setValueAtTime(0, tSwap - 0.03); ls.gain.linearRampToValueAtTime(-30, tSwap + 0.03); hp.frequency.setValueAtTime(10, tSwap); hp.frequency.exponentialRampToValueAtTime(600, tEnd);
-      src.start(Math.max(actx.currentTime, tA0 - 0.03), Math.max(aL[0], aL[j0] - 0.03 * rAN)); src.stop(tEnd + 0.05);
-      from.gain.gain.cancelScheduledValues(tA0 - 0.03); from.gain.gain.setValueAtTime(gA, tA0 - 0.03); from.gain.gain.linearRampToValueAtTime(0.0001, tA0 + 0.03);
-      mix.oldLoop = src; oldLoop = { beats: Math.round((tEnd - tA0) / P), from: warp.kX }; }
+    if (warp.aStop != null && warp.aStop < tEnd) { const tX = warp.aStop;   // the old song finishes its line and steps out behind its filter as the new voice comes in
+      from.gain.gain.cancelScheduledValues(tX - 0.02); from.gain.gain.setValueAtTime(gA, tX - 0.02); from.gain.gain.linearRampToValueAtTime(0.0001, tX + P);
+      auto(from.hp.frequency, [[tX - 0.02, 10, "set"], [tX + P, 900, "exp"]]); auto(from.low.gain, [[tX - 0.03, 0, "set"], [tX + 0.03, -30, "lin"]]);
+      auto(to.low.gain, [[tCut, -30, "set"], [tX - 0.03, -30, "set"], [tX + 0.03, 0, "lin"]]);
+      if (tX < tSwap) { tSwap = tX; tBass = tX; } tEnd = Math.min(tEnd, tX + P); oldLoop = null; vp_stop = Math.round((tX - tCut) / P); }
     const tVb = vocIn != null ? warp.T[bPre] + (vocIn - (bStart + bPre * pB)) / rBx : null;
     exitAt = tEnd; bVoiceT = tVb;
-    vp = { classic: true, warp: true, H: 2, aKnown: Array.isArray(ft.vs), bKnown: Array.isArray(nt.vs), exit: TOT, echo: false, oldLoop, aOut: 64 };
+    vp = { classic: true, warp: true, H: 2, aKnown: Array.isArray(ft.vs), bKnown: Array.isArray(nt.vs), exit: TOT, echo: false, oldLoop, aOut: 64, stop: vp_stop };
     if (hatClash) { auto(to.high.gain, [[tCut - 0.01, -15, "set"], [tSwap - 2 * P, -15, "set"], [tSwap, 0, "lin"]]); auto(to.mid.gain, [[tCut - 0.01, -4, "set"], [tSwap - 2 * P, -4, "set"], [tSwap, 0, "lin"]]);
       auto(from.high.gain, [[tSwap - 2 * P, 0, "set"], [tSwap, -15, "lin"]]); auto(from.mid.gain, [[tSwap - 2 * P, 0, "set"], [tSwap, -4, "lin"]]); }
     // THE NEW SONG'S VOICE AT ITS FULL VOLUME the moment it sings: if its words come in while the old song is still here,
@@ -2582,7 +2610,7 @@ async function startProMix() {
         const eL = grooveEnv(from.el.buf, tau => aL + tau, 8 * pA), eR = grooveEnv(from.el.buf, tau => aCut + tau, 8 * pA);
         if (eL && eR) { const x = grooveLag(eL, eR, 60); if (x.clear >= 1.05) aL -= x.lag; } }
       const tLoopEnd = Math.min(tSwap + 32 * P, Math.max(tSwap + 8 * P, tCut + 32 * P + 8 * P, (typeof tBass !== "undefined" ? tBass : tSwap) + 8 * P));
-      if (aL != null && tLoopEnd > tX + 2 * P) {
+      if (false && aL != null && tLoopEnd > tX + 2 * P) {   // (no part of the old song is cut in from elsewhere any more)
         const L8 = 8 * pA, src = actx.createBufferSource(), ls = biq("lowshelf", 200), g = actx.createGain(); src.buffer = from.el.buf; src.loop = true; src.loopStart = aL; src.loopEnd = aL + L8; src.playbackRate.value = rAN;
         src.connect(ls); ls.connect(g); g.connect(bus); const off = aL + ((((tX - tCut) * rAN) % L8) + L8) % L8, gl = gA * normGain(ft), tBs = typeof tBass !== "undefined" ? Math.max(tSwap, tBass) : tSwap;
         g.gain.setValueAtTime(0.0001, tX - 0.03); g.gain.linearRampToValueAtTime(gl, tX + 0.03); g.gain.setValueAtTime(gl, Math.max(tX + 0.05, tLoopEnd - 8 * P)); g.gain.linearRampToValueAtTime(0.0001, tLoopEnd);
@@ -2590,11 +2618,10 @@ async function startProMix() {
         src.start(Math.max(actx.currentTime, tX - 0.03), off); src.stop(tLoopEnd + 0.05); mix.oldLoop = src; oldLoopInfo = { from: +aL.toFixed(1), beats: Math.round((tLoopEnd - tX) / P) };
         from.gain.gain.cancelScheduledValues(tX - 0.03); from.gain.gain.setValueAtTime(gA, tX - 0.03); from.gain.gain.linearRampToValueAtTime(0.0001, tX + 0.03);   // the song itself (with its words) steps out
         tEnd = Math.max(tEnd, tLoopEnd); exitAt = tX; vEcho = false;
-      } else {   // no beat without words: the whole old song echoes out on the beat right there
-        exitAt = tX; vEcho = true;
-        setParam(from.delay.delayTime, Math.min(3.9, 0.75 * P)); setParam(from.fb.gain, 0.6); setParam(from.wet.gain, 0.85);
-        auto(from.send.gain, [[tX - P, 0, "set"], [tX - 0.5 * P, 0.9, "lin"], [tX + 0.02, 0.9, "set"], [tX + 0.06, 0, "lin"]]);
-        from.gain.gain.cancelScheduledValues(tX - 0.02); from.gain.gain.setValueAtTime(gA, tX - 0.02); from.gain.gain.linearRampToValueAtTime(0.0001, tX + 0.05);
+      } else {   // the old song finishes its line and steps out behind its filter right there (no echo)
+        exitAt = tX; vEcho = false;
+        from.gain.gain.cancelScheduledValues(tX - 0.02); from.gain.gain.setValueAtTime(gA, tX - 0.02); from.gain.gain.linearRampToValueAtTime(0.0001, tX + P);
+        auto(from.hp.frequency, [[tX - 0.02, 10, "set"], [tX + P, 900, "exp"]]);
         if (tX < tSwap) { auto(to.low.gain, [[tCut, -30, "set"], [tX - 0.03, -30, "set"], [tX + 0.03, 0, "lin"]]); auto(to.gain.gain, [[tCut - q, 0.0001, "set"], [tCut + q, 0.45 * gB, "lin"], [Math.min(tX - 0.02, tCut + 8 * P), gB, "lin"], [tX - 0.02, gB, "set"], [tX + 8 * P, 1, "lin"]]); tSwap = tX; }
         auto(from.low.gain, [[tX - 0.03, 0, "set"], [tX + 0.03, -30, "lin"]]); tEnd = tX + 8 * P; bassK = 0;
       }
@@ -2658,7 +2685,7 @@ async function startProMix() {
   }
   // the extended section: live percussion over both locked beats, a snare roll into the mashup
   if (mode !== "cut" && master && tExt != null && exitAt == null) { const pk = percLayer(tExt, xExt, P, 0.32); moves.push(`extended beat: ${pk} percussion, snare roll`); }
-  else if (warp && warp.info.ok && mode !== "cut") { const pk = percLayer(tCut + 8 * P, XT, P, 0.26); moves.push(`${XT} beats together with ${pk} percussion and a snare roll into the bass swap`); }
+
   if (exitAt != null && !(vp && vp.warp)) moves.push(`old song sang to beat ${vp.exit} at full volume, then echoed out on the beat`);
   if (vp && vp.mashVoice != null) moves.push("mashup: the new song's voice over the old song's instrumental");
   else if (vp && !vp.ride && !hookPlan && exitAt == null && ownHook && ownHook.for === nt.id && Math.abs(Nb / ownHook.h.hook.bpm - 1) <= 0.08 && karAt != null && karAt <= tMash + 0.01) {
@@ -2671,12 +2698,12 @@ async function startProMix() {
   // THE PRO CHECKLIST for this transition
   const kc = compat(ft.key, nt.key), checks = [];
   checks.push(["Tempo", true, `both locked at ${Nb} BPM, a whole number`]);
-  checks.push(["Beats", mode === "cut" || !!(kickInfo && kickInfo.ok) || points >= 3, mode === "cut" ? `filter blend instead of a beat mix: ${blendWhy}` : warp && warp.info.ok ? `MIDI clock: both songs' beats mapped one by one and the new song steered onto every beat of the old one${bPre ? " (through its looped groove)" : ""}; checked in ${kickInfo.n} sections, every one within ${kickInfo.worst} ms (${kickInfo.rms} ms on average)${hatClash ? `; their hats and claps don't sit together (${kickInfo.hatBeats || "?"} ms apart beat by beat), so the new song's hats and claps stay back until the bass swap, then the old song's step back` : ""}` : kickInfo && kickInfo.ok ? `locked groove on groove (snares, claps, kick clicks): checked in ${kickInfo.n} sections of the blend, every one within ${kickInfo.worst} ms, ${kickInfo.clear}× surer than any other spot${hatClash ? "; their hi-hats don't sit together, so the new song's highs wait for the swap" : ""}` : `hi-hats lined up at ${points} points (not enough clear kicks for a kick lock)`]);
+  checks.push(["Beats", mode === "cut" || !!(kickInfo && kickInfo.ok) || points >= 3, mode === "cut" ? `filter blend instead of a beat mix: ${blendWhy}` : warp && warp.info.ok ? `MIDI clock: ${warp.info.drums ? "both songs' DRUM MAPS from the Mac (every beat where its own kick and snare hit)" : "both songs' beats mapped one by one"} and the new song steered onto every beat of the old one${bPre ? " (through its looped groove)" : ""}; checked in ${kickInfo.n} four-bar sections, every one within ${kickInfo.worst} ms (${kickInfo.rms} ms on average)${hatClash ? `; their hats and claps don't sit together (${kickInfo.hatBeats || "?"} ms apart beat by beat), so the new song's hats and claps stay back until the bass swap, then the old song's step back` : ""}` : kickInfo && kickInfo.ok ? `locked groove on groove (snares, claps, kick clicks): checked in ${kickInfo.n} sections of the blend, every one within ${kickInfo.worst} ms, ${kickInfo.clear}× surer than any other spot${hatClash ? "; their hi-hats don't sit together, so the new song's highs wait for the swap" : ""}` : `hi-hats lined up at ${points} points (not enough clear kicks for a kick lock)`]);
   checks.push(["Bars", mode === "cut" || !!la, rr && rr.k ? `bars lined up (new song moved ${rr.k} beat${Math.abs(rr.k) === 1 ? "" : "s"})` : "bars lined up, mix starts on a phrase"]);
   checks.push(["Key", ["perfect", "good", "ok"].includes(kc.level), `${ft.key || "?"} → ${nt.key || "?"} (${kc.level === "perfect" ? "same key" : kc.level === "good" ? "neighbour keys" : kc.level === "ok" ? "energy shift" : kc.level === "clash" ? "keys don't match well: the voices never overlap" : "key unknown"})`]);
   if (vp && vp.warp) {
     const bv = bVoiceT != null ? Math.round((bVoiceT - tCut) / P) : null;
-    checks.push(["Vocals", true, `old song keeps its voice at full volume${vp.oldLoop ? `, finishes its line at beat ${vp.oldLoop.from}, then its own beat (no words) carries on` : ""}; ${bLayer ? `the new song's sung intro comes in at beat ${bv != null ? bv : 0} at full volume, over its beat bed` : `the new song plays only its beat (no words) until the old song is gone; ${bv != null ? `its voice comes in at beat ${bv}, at full volume` : "it doesn't sing in the mix"}`} — never two voices at once`]);
+    checks.push(["Vocals", true, `old song plays on naturally, its voice at full volume${vp.stop != null ? `, and finishes its line at beat ${vp.stop}, stepping out behind its filter as the new voice comes in` : ""} (nothing cut in from elsewhere in it); ${bLayer ? `the new song's sung intro comes in at beat ${bv != null ? bv : 0} at full volume, over its beat bed` : `the new song plays only its beat (no words) until the old song is gone; ${bv != null ? `its voice comes in at beat ${bv}, at full volume` : "it doesn't sing in the mix"}`} — never two voices at once`]);
   } else if (vp && vp.classic) {
     const bv = bVoiceT != null ? Math.round((bVoiceT - tCut) / P) : null, xb = vp.exit != null ? vp.exit : Math.round((tSwap - tCut) / P);
     checks.push(["Vocals", true, `old song plays whole, its voice at full volume, until beat ${xb}${vp.oldLoop ? `, finishes its line, then its own beat (no words) rides on under the new song for ${vp.oldLoop.beats} beats` : vp.echo ? ", then finishes its line and echoes out on the beat" : " (its words are done), then its beat fades under the new song"}; ${bv != null ? `new voice from beat ${bv}` : "new song doesn't sing in the mix"} — never two at once, no vocal remover`]);
@@ -3600,7 +3627,7 @@ async function importOne(f) {
   try { if (tags.explicit && t.apex && tags.apex && /"sc":1/.test(tags.apex)) t.explicit = JSON.parse(tags.explicit).filter(x => Array.isArray(x) && x.length >= 2); } catch (e) {}
   if (!t.explicit && /\b(clean|radio edit|instrumental|acapella free)\b/i.test(t.title + " " + f.name)) t.explicit = [];
   if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} t.isInst = true; t.instOf = ii.of || ""; t.explicit = []; t.cleanChecked = 1; }
-  await takeCleanPatch(t, tags.clean);
+  await takeCleanPatch(t, tags.clean); applyBeats(t, tags.beats);
   // a real copy of the audio, saved as plain binary and read back to prove it landed
   sessionAudio.set(id, f);
   try { await saveAudio(id, buf, f.type); }
@@ -3645,10 +3672,10 @@ function applyApex(t, raw) {
 async function refreshFromFile(t, f) {
   const buf = await f.arrayBuffer(); let tags = {};
   try { const u = new Uint8Array(buf, 0, 12); tags = strAt(u, 4, 4) === "ftyp" ? readMP4(buf) : readID3(buf); } catch (e) {}
-  if (!tags.apex && !tags.explicit && !(await isBroken(t))) return false;
+  if (!tags.apex && !tags.explicit && !tags.beats && !(await isBroken(t))) return false;
   applyApex(t, tags.apex);
   try { if (tags.explicit && tags.apex && /"sc":1/.test(tags.apex)) t.explicit = JSON.parse(tags.explicit); } catch (e) {}
-  await takeCleanPatch(t, tags.clean);
+  await takeCleanPatch(t, tags.clean); applyBeats(t, tags.beats);
   if (tags.inst) { let ii = {}; try { ii = JSON.parse(tags.inst); } catch (e) {} Object.assign(t, { isInst: true, instOf: ii.of || "", explicit: [], cleanChecked: 1 }); }
   sessionAudio.set(t.id, f); if (!(await dbHas("audio", t.id))) await saveAudio(t.id, buf.slice(0), f.type); t.size = f.size; t.fine = 0; delete t.bad;
   await dbPut("tracks", t); return true;
@@ -4436,7 +4463,7 @@ function mediaMeta() {
   if (!("mediaSession" in navigator)) return;
   const t = A().track; if (!t) return;
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: nm(t.title), artist: nm(t.artist) || "", album: "Apex Studios DJ App" });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: nm(t.title), artist: nm(t.artist) || "", album: "Apex Studios DJ App", artwork: [{ src: "icon-512.png", sizes: "512x512", type: "image/png" }, { src: "icon-180.png", sizes: "180x180", type: "image/png" }] });
     navigator.mediaSession.playbackState = st.playing ? "playing" : "paused";
   } catch (e) {}
 }
@@ -4446,6 +4473,8 @@ try {
   navigator.mediaSession.setActionHandler("nexttrack", () => bgMode ? bgAdvance() : S.automix ? mixNow() : skipNext());
   navigator.mediaSession.setActionHandler("previoustrack", () => skipPrev());
 } catch (e) {}
+// (Apple Watch Now Playing and the lock screen: 10 seconds back and ahead, like the ±10 buttons)
+try { navigator.mediaSession.setActionHandler("seekbackward", () => seekBy(-10)); navigator.mediaSession.setActionHandler("seekforward", () => seekBy(10)); } catch (e) {}
 
 /* ---------- wake lock ---------- */
 let wake = null, wantWake = false;
@@ -4850,8 +4879,15 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "7.07";
+const APP_VERSION = "7.08";
 const CHANGELOG = [
+  ["7.08", "October 12, 2026", ["The old song plays on naturally through the mix: no more pieces of it cut in from somewhere else in the middle of its words. The mix starts in its outro; if the new song's words come in while it still sings, it finishes its line and steps out behind its filter",
+    "No synthetic percussion layered over the mix; the old-school breaks only ride beats where nobody is singing",
+    "A tighter lock standard: a beat mix only rolls when every four-bar section of it is within 4 ms (2 ms on average)",
+    "When the old song still sings through its outro, the new song starts on its beat (its sung intro waits), so the mix keeps its full length",
+    "Set order: songs whose grooves fit sit next to each other (from the Mac's drum maps), and a polishing pass swaps neighbours so the whole set flows",
+    "Apple Watch and lock screen: Now Playing shows the app's icon, with ±10-second skips; play, pause and next work from the Watch, and its Digital Crown sets the volume",
+    "Ready for the Mac's drum maps (APEX_BEATS): every beat of a song found on its own drums, carried in the song's tags"]],
   ["7.07", "October 12, 2026", ["EXTENDED BEAT MIXES, OLD-SCHOOL STYLE: 8 beats rising in, 32 beats of both beats together, the bass swap, then 8 beats out: 48 beats of beat mixing (the Mix length setting sets the beats together), every beat of the new song steered onto the old one",
     "Old-school breaks ride the last 16 beats before the swap on most mixes: Apache, Amen Brother, Planet Rock, Beat It, Play At Your Own Risk, It's Just Begun, Din Daa Daa and the rest of your Beat Loops (add the Beat Loops folder once), locked to the MIDI clock, without their own bass",
     "Songs that open with their vocals and no beat (like Private Eyes) keep their sung intro: their own beat break from later in the song (the bridge) plays under it, locked, until their beat comes in; when a song has no break of its own, a classic break from the Beat Loops takes its place",
