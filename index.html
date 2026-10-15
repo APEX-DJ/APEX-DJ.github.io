@@ -1323,6 +1323,35 @@ class BufferPlayer {
     this.seg = this.seg.filter(x => x.t < when); this.seg.push({ t: when, pos, rate: r });
     const pr = this.node.playbackRate; pr.cancelScheduledValues(when); pr.setValueAtTime(r, when);
     for (const L of this.layers) if (L.node) { const q = L.node.playbackRate; q.cancelScheduledValues(when); q.setValueAtTime(r, when); }
+    for (const e of this.extra || []) { try { const q = e.n.playbackRate; q.cancelScheduledValues(when); q.setValueAtTime(r, when); } catch (x) {} }
+  }
+  // A DETOUR (call and answer): at t1 the song steps over to w (a stretch of its own beat without words, on the same beat
+  // of the bar) for len seconds of song, then carries on exactly where it was at t1: its words wait while another voice
+  // answers, and none of them are lost. Each switch is a 6 ms crossfade on the beat. False if it can't (a loop or a layer
+  // is running, it isn't playing, or t1 is too soon)
+  detour(t1, w, len) {
+    if (!this.node || this._paused || this.loop || this.layers.length || !this.seg.length || (this.extra && this.extra.length)) return false;
+    if (t1 < this.ctx.currentTime + 0.15 || !(len > 0.2)) return false;
+    this._compact();
+    const old = this.seg, rateAt = t => this._segAt(t).rate, p1 = this._posAt(t1), XF = 0.006, later = old.filter(x => x.t > t1);
+    // when the detour is over: len seconds of song from t1, following the tempo already scheduled
+    let t = t1, done = 0, r = rateAt(t1); for (let k = 0; ; k++) { const nt = k < later.length ? later[k].t : Infinity, can = (nt - t) * r; if (done + can >= len) { t += (len - done) / r; break; } done += can; t = nt; r = later[k].rate; }
+    const t2 = t, integ = (a, b) => { let sum = 0, tt = a; for (const x of [...old.filter(x => x.t > a && x.t < b), { t: b }]) { sum += (x.t - tt) * rateAt(tt); tt = x.t; } return sum; };
+    const segs = old.filter(x => x.t < t1); segs.push({ t: t1, pos: w, rate: rateAt(t1) });
+    for (const x of old) if (x.t > t1 && x.t < t2) segs.push({ t: x.t, pos: w + integ(t1, x.t), rate: x.rate });
+    segs.push({ t: t2, pos: p1, rate: rateAt(t2) });
+    for (const x of old) if (x.t > t2) segs.push({ t: x.t, pos: p1 + integ(t2, x.t), rate: x.rate });
+    const mk = (off, when, until) => { const n = this.ctx.createBufferSource(), g = this.ctx.createGain(); n.buffer = this.buf; n.playbackRate.value = rateAt(when);
+      for (const x of old) if (x.t > when) n.playbackRate.setValueAtTime(x.rate, x.t);
+      g.gain.setValueAtTime(0, when - XF); g.gain.linearRampToValueAtTime(1, when + XF); if (until) { g.gain.setValueAtTime(1, until - XF); g.gain.linearRampToValueAtTime(0, until + XF); }
+      n.connect(g); g.connect(this.out); n.start(when - XF, Math.max(0, off - XF * rateAt(when))); if (until) n.stop(until + XF + 0.01); return { n, g }; };
+    const n1 = this.node, g1 = this.ctx.createGain(); n1.disconnect(); n1.connect(g1); g1.connect(this.out);
+    g1.gain.setValueAtTime(1, t1 - XF); g1.gain.linearRampToValueAtTime(0, t1 + XF); n1.stop(t1 + XF + 0.01);
+    const d2 = mk(w, t1, t2), d3 = mk(p1, t2, null), n3 = d3.n, gone = e => () => { try { e.n.disconnect(); e.g.disconnect(); } catch (x) {} this.extra = (this.extra || []).filter(y => y !== e); };
+    const e1 = { n: n1, g: g1 }; n1.onended = gone(e1); d2.n.onended = gone(d2);
+    n3.onended = () => { if (this.node !== n3) return; this._pos = this.duration; this.node = null; this.seg = []; this._paused = true; this.emit("ended"); };
+    this.node = n3; this.extra = [e1, d2]; this.seg = segs; this.detourAt = [t1, t2];
+    return true;
   }
   _compact() { const now = this.ctx.currentTime; if (!this.seg.length) return; const c = this._segAt(now); if (c.t < now) this.seg = [{ t: now, pos: this._posAt(now), rate: c.rate }, ...this.seg.filter(x => x.t > now)]; }
   play() { if (!this.buf) return Promise.reject(new Error("No audio loaded")); if (this._paused) { this._paused = false; this._start(this.ctx.currentTime); } return Promise.resolve(); }
@@ -1348,7 +1377,7 @@ class BufferPlayer {
   }
   // stop, then unplug only once the audio engine says it has finished: unplugging a player that's still running left it (and its
   // whole song, ~150 MB) in memory for good, one more song after every mix, until the phone closed the app
-  _stop() { for (const L of this.layers) this._stopLayer(L); const n = this.node; if (!n) return; this.node = null; this.seg = []; n.onended = () => { try { n.disconnect(); } catch (e) {} }; try { n.stop(); } catch (e) { try { n.disconnect(); } catch (e2) {} } }
+  _stop() { for (const L of this.layers) this._stopLayer(L); for (const e of this.extra || []) { e.n.onended = null; try { e.n.stop(); } catch (x) {} try { e.n.disconnect(); e.g.disconnect(); } catch (x) {} } this.extra = []; const n = this.node; if (!n) return; this.node = null; this.seg = []; n.onended = () => { try { n.disconnect(); } catch (e) {} }; try { n.stop(); } catch (e) { try { n.disconnect(); } catch (e2) {} } }
 }
 let actx = null, master = null, volNode = null, recDest = null, meter = null, bus = null, verb = null, dropGain = null, noiseBuf = null;
 const decks = [0, 1].map(i => {
@@ -3212,19 +3241,37 @@ function playAnswer(buf, s0, s1, rate, when, P, g) { // a title line as a DJ sam
 }
 /* the second half: the new song's first words (after the mix) call, and the old song answers with its title line. Its
    line is copied out before the old song's audio is let go */
-function answerBack(m, from, to) {
-  const ft = from.track, nt = to.track, ta = titleLine(ft); if (!ta || !nt || !Array.isArray(nt.calls) || !from.bp || !from.bp.buf || !(to.el instanceof BufferPlayer) || !to.el.timeOf) return null;
+function answerBack(m, from, to, ft) {
+  const nt = to.track, ta = titleLine(ft); if (!ta || !nt || !Array.isArray(nt.calls) || !from.bp || !from.bp.buf || !(to.el instanceof BufferPlayer) || !to.el.timeOf) return null;
   const posB = to.el.currentTime, pB = m.pB, pA = m.curP || 60 / ft.bpm, rB = to.el.playbackRate, rate = rB * pA / pB, bA = nearBeat(ft, ta[0], pA);
+  if (window.__ansDbg) console.info(`APEX answer-debug: posB ${posB.toFixed(2)} calls ${JSON.stringify(nt.calls.slice(0, 4).map(c => c[1]))} loop ${!!to.el.loop} layers ${to.el.layers.length}`);
   const s0 = Math.max(0, Math.min(ta[0], bA) - 0.03), s1 = ta[1] + 0.35, lenB = Math.ceil((s1 - s0) / rate / (pB / rB)) + 1;
   for (const c of nt.calls) {
     if (c[1] < posB + 2 * pB || c[1] > posB + 64 * pB) continue;
     const kB = nearBeat(nt, c[1] + 0.45 * pB, pB); let quiet = true;   // the next beat after the call, then room for the whole answer
     for (let x = c[1] + 0.08; x < kB + lenB * pB; x += 0.1) { const v = singsAt(nt, x); if (v !== false) { quiet = false; break; } }
-    if (!quiet) continue;
+    // no gap after the call (it sings straight on): ITS VOICE HOLDS for the answer: the song steps over to its own beat
+    // without words for a few bars, on the same beat of the bar, then carries on from its next word
+    const hold = quiet ? null : holdSpot(nt, to.el.buf, kB, Math.ceil(lenB / 4) * 4, pB);
+    if (!quiet && !hold) continue;
     const sr = from.bp.buf.sampleRate, n = Math.ceil((s1 - s0) * sr), cp = new AudioBuffer({ length: n, numberOfChannels: from.bp.buf.numberOfChannels, sampleRate: sr });
     for (let ch = 0; ch < cp.numberOfChannels; ch++) cp.copyToChannel(from.bp.buf.getChannelData(ch).subarray(Math.floor(s0 * sr), Math.floor(s0 * sr) + n), ch);
     const g = sampleLevel(cp, 0, cp.duration, normGain(ft), to.el.buf, kB, kB + lenB * pB, normGain(nt));
-    return { buf: cp, lead: bA - s0, rate, at: kB, P: pB / rB, g, call: c, from: ft.title };
+    return { buf: cp, lead: bA - s0, rate, at: hold ? hold.p1 : kB, P: pB / rB, g, call: c, from: ft.title, hold };
+  }
+  return null;
+}
+/* where a song can hold its voice for L beats: a stretch of its own beat without words (its intro beat, or an earlier
+   break) starting on the same beat of the bar as p1, with its kick and bass there. From its drum map; null if none */
+function holdSpot(t, buf, p1, L, pB) {
+  const pb = prepBeats(t); if (!pb || pb.length < 32 || !buf) return null;
+  let lo = 0, hi = pb.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pb[m] < p1) lo = m; else hi = m; }
+  const i1 = Math.abs(pb[lo] - p1) <= Math.abs(pb[hi] - p1) ? lo : hi, b0 = t.prep.bar0 | 0, ph = mod(i1 - b0, 4), body = lowBody(buf, pB), ks = songKicks(buf);
+  for (let iw = 0; iw + L < i1 - 1; iw++) {
+    if (mod(iw - b0, 4) !== ph) continue;
+    const a = pb[iw], b = pb[iw + L]; if (!quietFor(t, a - 0.1, b + 0.1) || lowDb(buf, a, b) < body - 6) continue;
+    let k = 0; for (const x of ks) { if (x >= b) break; if (x >= a) k++; } if (k < L * 0.5) continue;
+    return { w: a, len: b - a, p1: pb[i1], L };
   }
   return null;
 }
@@ -3343,12 +3390,12 @@ function noteUnchecked(t) {
 }
 function finishMix() {
   const m = mix; mix = null;
-  const { from, to } = m;
+  const { from, to } = m, oldTrack = from.track;
   if (from.track) pushHistory(from.track.id, m.pro && m.M != null ? m.M : null);   // where it mixed out, to hear that mix again
   clearInterval(brakeTimer); brakeTimer = null;
   clearTimeout(m.releaseTimer); if (from.el.clearLoop) from.el.clearLoop(); from.el.pause(); setParam(from.gain.gain, 0); resetFx(from); from.track = null; from.el.playbackRate = 1;
   if (from.vride) setParam(from.vride.gain, 0);
-  let back = null; try { if (m.pro && from.el === from.bp && !(m.moves || []).some(x => /^call and answer/.test(x))) back = answerBack(m, from, to); } catch (e) { back = null; }
+  let back = null; try { if (m.pro && from.el === from.bp && !(m.moves || []).some(x => /^call and answer/.test(x))) back = answerBack(m, from, to, oldTrack); else if (window.__ansDbg) console.info("APEX answer-debug: not tried", m.pro, from.el === from.bp); } catch (e) { back = null; if (window.__ansDbg) console.info("APEX answer-debug: error " + e.message); }
   if (from.bp && from.el === from.bp) from.bp.load(null); // let go of the old song's audio right away: phones have little memory to spare
   setParam(to.gain.gain, 1); resetFx(to); if (!m.pro) to.el.playbackRate = m.rate;
   active = to.i; st.qi = m.nextI; st.played.add(to.track.id); st.forcedNext = false; if (st.fadeNextId === to.track.id) st.fadeNextId = null;
@@ -3361,7 +3408,8 @@ function finishMix() {
       const posB = to.el.currentTime, k0 = Math.ceil((posB - m.bStart) / m.pB) + 8, steps = Math.min(600, Math.ceil(Math.abs(rOwn - r0) / 0.0002));
       for (let k = 1; k <= steps; k++) { const tk = to.el.timeOf(m.bStart + (k0 + k) * m.pB); if (tk == null) break; to.el.setRateAt(r0 + (rOwn - r0) * k / steps, tk); }
     }
-    if (back) { const T = to.el.timeOf(back.at); if (T != null && T > actx.currentTime + 0.2) { playAnswer(back.buf, 0, back.buf.duration, back.rate, T - back.lead / back.rate, back.P, back.g); lastMixInfo && (lastMixInfo.answerBack = { call: back.call[2] || "", from: back.from }); console.info(`APEX answer: “${nm(to.track.title)}” calls${back.call[2] ? ` “${back.call[2]}”` : ""} at ${back.call[1].toFixed(1)} s, “${nm(back.from)}” answers with its title line`); } }
+    if (window.__ansDbg) console.info("APEX answer-debug: back " + (back ? JSON.stringify({ at: back.at, hold: back.hold }) : "none"));
+    if (back) { const T = to.el.timeOf(back.at); if (T != null && T > actx.currentTime + 0.2 && (!back.hold || to.el.detour(T, back.hold.w, back.hold.len))) { playAnswer(back.buf, 0, back.buf.duration, back.rate, T - back.lead / back.rate, back.P, back.g); lastMixInfo && (lastMixInfo.answerBack = { call: back.call[2] || "", from: back.from }); console.info(`APEX answer: “${nm(to.track.title)}” calls${back.call[2] ? ` “${back.call[2]}”` : ""} at ${back.call[1].toFixed(1)} s, “${nm(back.from)}” answers with its title line${back.hold ? ` (its voice holds ${back.hold.L} beats on its own beat)` : ""} @${T.toFixed(2)}`); } }
   } else if (S.easeBack && Math.abs(m.rate - 1) > 0.001) ease = { d: to, from: m.rate, t0: performance.now(), dur: Math.max(24000, Math.abs(m.rate - 1) / 0.0003 * 1000) };   // (about 0.03% a second at most)
   computeNext(); renderAll(); mediaMeta(); noteUnchecked(to.track); finishDelete();
 }
@@ -5424,8 +5472,10 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.10";
+const APP_VERSION = "10.12";
 const CHANGELOG = [
+  ["10.12", "October 14, 2026", ["Call and answer, even when the calling song sings straight on: after its call (\"Ladies and gentlemen\"), its voice holds for a few bars while its own beat keeps going (the same beat of the bar, a 6 ms crossfade), the other song's title line answers (\"No parking on the dance floor!\"), and then it carries on from its very next word: nothing of it is lost",
+    "Versions now go up by 0.02 (10.10, 10.12, 10.14…)"]],
   ["10.10", "October 14, 2026", ["Smoother tempo: after a mix, the new song glides back to its own tempo so slowly you can't hear it (it used to step down 1 BPM every 8 beats, and you heard it slow down). No more tempo rides: songs too far apart in tempo blend at their own tempos",
     "Longer loops you don't notice: the new song's beat loop is the longest stretch it has without words (64 beats, then 32, then 16), taken from the spot where the jump back sounds like the song just carrying on, and it goes round twice at most; a song with little beat of its own gets a shorter hand-over instead",
     "Clashes: when the two songs' notes don't fit at the mixed tempo (a turntable-style tempo change moves the pitch too) or their grooves fight, the clashing music fades out and just the beats hit: the new song brings its drums, and the old song's music leaves with its last line",
