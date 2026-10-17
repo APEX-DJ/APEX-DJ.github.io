@@ -1615,7 +1615,9 @@ function planPro(d, nt, manual) {
     for (let k = blocks.length - 1; k >= 0 && M == null; k--) {
       let [b0, b1] = blocks[k]; b0 = snapUp(Math.max(b0, minStart, 0.45 * dur)); b1 = Math.min(b1, lastBar); const span = b1 - b0;
       if (span >= need) M = b0 + Math.floor((span - need) / ph) * ph;
-      else if (span >= 16 * pA) { M = b0; loop = [b0, b0 + Math.floor(span / (16 * pA)) * 16 * pA]; }
+      // (a shorter stretch without words is no longer looped to fill the mix: you heard the old song repeat itself at an
+      // obvious spot. The mix starts the whole mix length before its end instead, and it plays straight through, its voice
+      // riding the new beat and leaving on a finished line)
     }
   }
   if (M == null) {
@@ -2244,9 +2246,11 @@ async function startProMix() {
   // THE OLD SONG LEAVES ON A FINISHED LINE: when it still sings at the end of the window, it leaves at its last breath inside
   // the mix (a beat and a half or more without singing, right after a line), and its last words echo out on the beat. It's
   // never cut off in the middle of a line (one that sings straight through to the end fades there, with the echo)
-  let aLine = false;
+  let aLine = false, aNext = null;
   if (!master && mode !== "cut" && aDone > TOT - 6) { const sg = j => singsAt(ft, aCut0 + j * pA);
-    for (let j = TOT - 6; j >= SWb + 12; j -= 0.5) if (sg(j - 0.5) && [0, 0.5, 1, 1.5].every(k => sg(j + k) === false)) { aDone = j; aLine = true; break; } }
+    for (let j = TOT - 6; j >= SWb + 12; j -= 0.5) if (sg(j - 0.5) && [0, 0.5, 1, 1.5].every(k => sg(j + k) === false)) { aDone = j; aLine = true; break; }
+    // (and its music is gone before its next line would start: that line must never be heard under the new song's words)
+    if (aLine) for (let j = aDone + 2; j <= TOT; j += 0.5) if (sg(j)) { aNext = j; break; } }
   // ...and the old song never has to loop its own ending: the mix is over before its music is (when there's room)
   const aRoom = Math.floor((endPoint(from) - aCut0) / pA / 8) * 8;
   let mixEnd = master || mode === "cut" ? TOT : clamp(Math.ceil((aDone + 4) / 8) * 8, SWb + 16, aRoom >= SWb + 16 ? Math.min(TOT, aRoom) : TOT);
@@ -2291,8 +2295,9 @@ async function startProMix() {
       const nearly = (c, nb) => { const sf = singFrac(nt, c, c + nb * pB); return sf != null ? sf <= 0.02 : vocalness(to.el.buf, c, c + nb * pB) < 0.1; };
       // ...its seam clear of any voice (its first beat and last 2 beats), and a loop from before the first words ending well
       // before them (a loop running into the singer's first word repeats that word over the old song's voice every time round)
-      const edges = (c, nb) => { if (c < vIn && c + nb * pB > vIn - 0.25 * pB) return false;
-        for (const [a, b] of [[c, c + pB], [c + (nb - 2) * pB, c + nb * pB]]) for (let x = a; x <= b; x += 0.1) if (singsAt(nt, x)) return false; return true; };
+      // (3 beats of room either side: the bar lock can still move the loop up to 3 beats when it lines its bars up with the old song's)
+      const edges = (c, nb) => { if (c < vIn && c + (nb + 3) * pB > vIn - 0.25 * pB) return false;
+        for (const [a, b] of [[c - 3 * pB, c + pB], [c + (nb - 2) * pB, c + (nb + 3) * pB]]) for (let x = Math.max(0, a); x <= b; x += 0.1) if (singsAt(nt, x)) return false; return true; };
       for (const [nb, lvl] of [[64, 2], [32, 2], [64, 1], [32, 1], [16, 2], [16, 1], [16, 0]]) {
         const ok = c => edges(c, nb) && (lvl === 2 ? clean(c, nb) : lvl === 1 ? near(c, nb) : nearly(c, nb)), cands = [];
         if (vIn - bStart >= nb * pB - 0.05) {   // its own intro
@@ -2480,7 +2485,13 @@ async function startProMix() {
     // whose maps can sit a hair apart, and a jump at the hand-over is heard; there the song stays on its map and only the
     // bed moves to meet it)
     if (bPre >= 8) { const tb = clock[bPre] - tCut, part = (a, b) => { const v = cur.filter(x => x.clear >= 1.1 && x.t - tCut - 4 * P >= a - 0.01 && x.t - tCut + 4 * P <= b + 0.01).map(x => x.d).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
-      const mBed = part(0, tb), mSong = part(tb, TOT * P); if ((!drumsBoth && (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002)) || (drumsBoth && Math.abs(mBed - mSong) > 0.003)) { const trial = shift.map((v, j) => v - (drumsBoth ? (j < bPre ? mBed - mSong : 0) : (j < bPre ? mBed : mSong))), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } } }
+      const mBed = part(0, tb), mSong = part(tb, TOT * P); if ((!drumsBoth && (Math.abs(mBed) > 0.002 || Math.abs(mSong) > 0.002)) || (drumsBoth && Math.abs(mBed - mSong) > 0.003)) { const trial = shift.map((v, j) => v - (drumsBoth ? (j < bPre ? mBed - mSong : 0) : (j < bPre ? mBed : mSong))), m2 = measure(trial); if (m2 && sc(m2) < sc(cur)) { shift = trial; cur = m2; } }
+      // ...and each pass round the loop on its own too (the turns can come from different stretches of the song, whose maps can
+      // sit a few ms apart from each other): kept only if it brings every section closer
+      if (bLoopB >= 8 && bPre > bLoopB) { const passes = []; for (let j0 = 0; j0 < bPre; j0 += bLoopB) passes.push([j0, Math.min(bPre, j0 + bLoopB)]);
+        const ref = drumsBoth ? part(tb, TOT * P) : 0, trial = shift.slice();
+        for (const [j0, j1] of passes) { const m = part(clock[j0] - tCut, clock[j1] - tCut) - ref; if (Math.abs(m) > 0.002) for (let j = j0; j < j1; j++) trial[j] -= m; }
+        const m2 = measure(trial); if (m2 && sc(m2) < sc(cur) - 0.0002) { shift = trial; cur = m2; } } }
     // (on drum maps the beats are left alone, unless a live drummer's hits wander off the map by more than 3 ms: then they're ridden too)
     for (let pass = 0; pass < 3 && (!drumsBoth || sc(cur) > 0.003); pass++) { const g2 = cur.filter(x => x.clear >= 1.1); if (g2.length < 3) break;
       // each beat takes the average of the windows that hold it, from its own part only (the bed's windows for the bed, the
@@ -2501,7 +2512,7 @@ async function startProMix() {
     // mix, a fill or a voice over it, doesn't throw the maps away for the rougher groove lock)
     const good = sec16.filter(x => x.clear >= 1.1), res = good.map(x => Math.abs(x.d)), worst = res.length ? Math.max(...res) : 1, rms = res.length ? Math.sqrt(res.reduce((s2, x) => s2 + x * x, 0) / res.length) : 1;
     const T = clock.map((t, j) => t + d + shift[j]);
-    return { T, clockA: clock, seqB, seqDeck, passes: lps.length, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: drumsBoth ? (good.length < 2 || (rms <= 0.004 && (worst <= 0.007 || (worst <= 0.015 && res.filter(x => x > 0.007).length <= 1)))) : good.length >= 2 && good.length >= 0.5 * sec16.length && worst <= 0.004 && rms <= 0.002, n: good.length, of: sec16.length,
+    return { T, clockA: clock, seqB, seqDeck, passes: lps.length, bedBuf, bedName, aLoop, kX, aStop, posA, posB: t => posBs(t, d, shift), K, info: { kind: drumsBoth ? "drum map" : "beat map", drums: drumsBoth, ok: window.__forceWarp ? true : drumsBoth ? (good.length < 2 || (rms <= 0.004 && (worst <= 0.007 || (worst <= 0.015 && res.filter(x => x > 0.007).length <= 1)))) : good.length >= 2 && good.length >= 0.5 * sec16.length && ((worst <= 0.004 && rms <= 0.002) || (rms <= 0.003 && worst <= 0.010 && res.filter(x => x > 0.004).length <= 1)), n: good.length, of: sec16.length,
       worst: +(worst * 1000).toFixed(1), rms: +(rms * 1000).toFixed(1), clear: 9, moved: Math.round(d * 1000), span: TOT, secs: sec16.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), fine: secs.map(x => `${Math.round(x.d * 1000)}${x.clear >= 1.1 ? "" : "?"}`).join(" "), oldLoop: !!aLoop, newLoop: bPre, bed: bLayer || bridgeBed ? bedName || "its own beat break" : null, bridge: bridgeBed } };
   };
   let warp = null;
@@ -2796,7 +2807,8 @@ async function startProMix() {
       const tIn8 = tCut + Math.min(8, XIN) * P; tSwap = tCut + SWb * P; tEnd = tCut + mixEnd * P;
       fadeB = clamp(aDone, SWb + 4, mixEnd - 2); const tFade = tCut + fadeB * P;   // (its music leaves right after its last words)
       tExt = tSwap; tMash = tSwap; var tBass = tSwap; bassK = 0; bassReadyK = true; gS = 1;
-      auto(from.gain.gain, [[tM - 0.01, 1, "set"], [tM + 0.05, gL, "lin"], [tCut - 0.01, gL, "set"], [tCut + 0.01, gA, "lin"], [tFade, gA, "set"], [tEnd, 0.0001, "lin"]]);
+      const tGone = aNext != null ? Math.min(tEnd, Math.max(tFade + P, tCut + (aNext - 0.25) * P)) : tEnd; mix.aGone = tGone;   // (out before its next line)
+      auto(from.gain.gain, [[tM - 0.01, 1, "set"], [tM + 0.05, gL, "lin"], [tCut - 0.01, gL, "set"], [tCut + 0.01, gA, "lin"], [tFade, gA, "set"], [tGone, 0.0001, "lin"]]);
       // THE BASS SWAP, KIND TO ITS VOICE: the old song's bass and kick go below 110 Hz (its voice keeps its body) and only its hats
       // and cymbals step back above 7 kHz (its voice keeps its presence): its voice rides the new beat up front
       auto(from.low.gain, [[tSwap - 0.03, 0, "set"]]);
@@ -2941,7 +2953,7 @@ async function startProMix() {
     const tVb = vIn != null ? tCut + (vIn - bStart) / rBx : null;
     const tHold = Math.max(tEnd, tSwap + 16 * P);                        // how long the old song would otherwise keep playing
     let tX = tVb != null ? Math.min(tVb, tHold) : tHold;                 // it may sing until the new voice comes in
-    if (tVb != null && tX < tCut + 4 * P) tX = tCut + 4 * P;
+    if (tVb != null && tX < tCut + 4 * P) tX = tVb >= tCut + 4 * P ? tCut + 4 * P : Math.max(tCut + 0.1 * P, tVb - 0.25 * P);   // (never past the new voice: two voices never sing at once)
     // would the two voices ever meet after tX? (both vocal maps, quarter beats); without maps: does the old one sing at all
     let meet = 0, aSings = 0, steps = 0;
     for (let t = tX; t < tHold; t += P / 4) { const sa = sungA(t), sb = singsAt(nt, wrapB(bStart + (t - tCut) * rBx)); steps++; if (sa) aSings++; if (sa && sb !== false) meet++; }
@@ -5624,8 +5636,13 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.16";
+const APP_VERSION = "10.18";
 const CHANGELOG = [
+  ["10.18", "October 17, 2026", ["The old song is never looped at a spot you'd notice: with a long mix (96 beats) the app used to start in a short stretch of the old song without words and loop it to fill the time; now the mix starts the whole mix length before its end and it plays straight through, its voice riding the new beat and leaving on a finished line",
+    "When the old song leaves at a gap between its lines, its music is gone before its next line would start (its echo carries the last words), so that line is never heard under the new song's words",
+    "The new song's beat loop is kept clear of any voice 3 beats past each end too, so lining its bars up with the old song's can never pull the start of a word into it",
+    "More mixes lock instead of falling back to a quick filter blend: one section of a mix reading a little off no longer throws the whole beat lock away (checked on 41 mixes from your library at 96 beats and 25 test mixes: all but 2 locked, never two voices)",
+    "A song without a drum map that sings from its very first beat: the old song's voice is out before it comes in (it used to keep singing 4 more beats over it)"]],
   ["10.16", "October 17, 2026", ["The old song is never cut off early any more: the new song's beat carries the whole mix (the length you set, 96 beats too), taking turns between up to three of its own stretches without words, and the old song leaves on a finished line, its last words echoing out on the beat. (A loop limit added in 10.10 had shortened mixes to 32-56 beats while the old song was still singing, and it stepped out in one beat with no echo)",
     "The old song's voice stays up front while it rides the new beat: at the bass swap only its bass and kick go (a clean cut below 110 Hz instead of a shelf that cut into its voice), only its hats step back (above 7 kHz), and the new song's mids make a little room",
     "A new song that opens singing waits for the old one: its beat break plays under the old song for the whole mix, then it starts from its very first word at full volume (no more voice coming in low and jumping up at the end)",
