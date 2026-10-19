@@ -2906,7 +2906,7 @@ async function startProMix() {
       // song's beat steps back (its bass and hats out), so its voice rides the new song's beat; once its words are done it
       // leaves over up to XOUT beats (filter and fader), and the new song's own words come in from its beginning
       const tIn8 = tCut + Math.min(8, XIN) * P; tSwap = tCut + SWb * P; tEnd = tCut + mixEnd * P;
-      fadeB = clamp(aDone, SWb + 4, mixEnd - 2); const tFade = tCut + fadeB * P;   // (its music leaves right after its last words)
+      fadeB = aNext != null ? clamp(aDone, SWb + 4, mixEnd - 2) : clamp(Math.max(aDone, mixEnd - XOUT), SWb + 4, mixEnd - 2); const tFade = tCut + fadeB * P;   // (24 out: its music fades over the last XOUT beats)   // (its music leaves right after its last words)
       tExt = tSwap; tMash = tSwap; var tBass = tSwap; bassK = 0; bassReadyK = true; gS = 1;
       const tGone = aNext != null ? Math.min(tEnd, Math.max(tFade + P, tCut + (aNext - 0.25) * P)) : tEnd; mix.aGone = tGone;   // (out before its next line)
       auto(from.gain.gain, [[tM - 0.01, 1, "set"], [tM + 0.05, gL, "lin"], [tCut - 0.01, gL, "set"], [tCut + 0.01, gA, "lin"], [tFade, gA, "set"], [tGone, 0.0001, "lin"]]);
@@ -2935,9 +2935,11 @@ async function startProMix() {
     var tBass = tSwap + (bassK || 0) * P; tEnd = Math.max(tEnd, tBass + 16 * P);   // the old song fades only once the new bass is in
     // at the swap: does the new song bring its own bass right away? if not, the old bass stays and fades instead of cutting
     bassReadyK = bassReady; gS = gSv;
-    auto(from.gain.gain, [[tM - 0.01, 1, "set"], [tM + 0.05, gL, "lin"], [tCut - 0.01, gL, "set"], [tCut + 0.01, gA, "lin"], [tBass + 0.5 * P - 0.01, gA, "set"]]);
+    // THE OLD SONG FADES OUT IN THE LAST XOUT BEATS ("24 out"): its music rides under the new beat until then
+    const tOutA = Math.max(tBass + 0.5 * P, tEnd - XOUT * P);
+    auto(from.gain.gain, [[tM - 0.01, 1, "set"], [tM + 0.05, gL, "lin"], [tCut - 0.01, gL, "set"], [tCut + 0.01, gA, "lin"], [tOutA - 0.01, gA, "set"]]);
     // the old song's fade (a cosine, as 16 ramps: a curve can't be cut short later, ramps can)
-    for (let k = 1; k <= 16; k++) from.gain.gain.linearRampToValueAtTime(Math.max(0.0001, gA * Math.cos((k / 16) * Math.PI / 2)), tBass + 0.5 * P + (k / 16) * (tEnd - tBass - 0.5 * P));
+    for (let k = 1; k <= 16; k++) from.gain.gain.linearRampToValueAtTime(Math.max(0.0001, gA * Math.cos((k / 16) * Math.PI / 2)), tOutA + (k / 16) * (tEnd - tOutA));
     const inB = master ? [[tCut - q, 0.0001, "set"], [tCut + q, gB, "lin"]] : [[tCut - q, 0.0001, "set"], [tCut + q, 0.45 * gB, "lin"], [tCut + mixShape().XIN * P, gB, "lin"]];   // classic: the fader comes up over XIN beats
     if (master) auto(to.gain.gain, [...bRise(tCut, P, gB, tSwap), [tSwap, gS, "lin"], [tSwap + 16 * P, gS, "set"], [tEnd, 1, "lin"]]);   // (60% on the beat, up in 8-beat steps)
     else auto(to.gain.gain, [...inB, [tSwap - 8 * P, gB, "set"], [tSwap, gS, "lin"], [tSwap + 16 * P, gS, "set"], [tEnd, 1, "lin"]]);
@@ -5833,8 +5835,10 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.22";
+const APP_VERSION = "10.24";
 const CHANGELOG = [
+  ["10.24", "October 18, 2026", ["24 OUT: the old song's music now fades out over the last 24 beats of a 144-beat mix (24 in, 96 together, 24 out). It used to fade over about 100 beats on the instrumental mix, so the old song was still under the new song's words",
+    "Where the old song sings again later in the mix, it still leaves on its last line, so its next line never plays under the new words"]],
   ["10.22", "October 18, 2026", ["THE INSTRUMENTAL MIX STARTS AS DESIGNED (the mixes your phone plays for songs with instrumentals): the new song's beat comes in at 60% and steps up to full by beat 32, the bass swap comes after 16 beats of both beats (it used to come after 128 beats, so the new song had no bass until over halfway), the old song's voice rides the new beat and leaves on its last line, and the mashup (the new words over the old instrumental) starts on the new song's first line. The mix starts so the old song's last line lands 56 beats in",
     "THE NEW SONG'S WORDS COME IN INSIDE THE MIX: they used to be planned for the very end of a mix, so they came after it. Now they come in once the old song's last line is done, and the mix runs on until they have had their first line",
     "The 96-beat setting makes a 144-beat mix (24 beats in, 96 together, 24 out). The samples, the mashup, the extended-groove percussion, the snare roll and the vocal samples are all kept as they were"]],
