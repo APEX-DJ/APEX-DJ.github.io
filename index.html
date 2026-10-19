@@ -352,6 +352,12 @@ button{cursor:pointer}
 .mixsep{margin:14px 0 6px;padding:8px 10px;border-radius:10px;font-size:13px;font-weight:700;color:var(--gold);background:var(--gold-wash);text-align:center}
 .row.dim{opacity:.4}
 .mixtag{font:700 10px var(--mono);padding:1px 6px;border-radius:999px;margin-right:4px;white-space:nowrap}
+.list .row.mixgreen{box-shadow:inset 4px 0 0 #22c55e} .list .row.mixorange{box-shadow:inset 4px 0 0 var(--orange)}
+.list .row.mixgreen:not(.xpl) .r-t b{color:#22c55e!important} .list .row.mixorange:not(.xpl) .r-t b{color:var(--orange)!important}
+.mixlegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:2px 0 8px;opacity:.9} .mixlegend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.genrebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 6px} .genrebar .gl{font-size:12px;opacity:.75;margin-right:4px}
+.gchip{font-family:inherit;font-weight:600;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;cursor:pointer} .gchip small{opacity:.7;font-weight:500;margin-left:2px} .gchip.on{background:var(--gold);color:#111;border-color:transparent}
+.genreact{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px;font-size:13px}
 .mixtag.m{color:var(--green);background:rgba(74,222,128,.12)} .mixtag.r{color:var(--cyan);background:var(--cyan-wash)} .mixtag.c{color:var(--gold);background:var(--gold-wash)} .mixtag.x{color:var(--faint)}
 .mixctl{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;font-size:13px;color:var(--muted)}
 .mixctl select{background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffc23d' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);border-radius:999px;padding:6px 28px 6px 12px;color:var(--fg);font-weight:700;min-height:38px;-webkit-appearance:none;appearance:none}
@@ -2038,8 +2044,11 @@ function planVocals(o) {
     }
   }
   if (!bKnown && !res.bHold && o.holdOk) res.bHold = [0, Math.max(4 * H, res.aOut + gap)];
-  // does the old song sing again after its voice is due out? then it has to leave (cleanly) right there
-  res.aAgain = false; for (let h = res.aOut + 1; h < o.swapBeat * H; h++) if (sa(h)) { res.aAgain = true; break; }
+  // the new song's sung parts wait until the old voice is out (in every branch above): its first line after the old voice's end + a
+  // gap. Its own instrumental carries the wait, so two voices never sing over each other.
+  if (bKnown && !res.bHold && o.holdOk && res.aOut != null) { let rel = null; for (let h = res.aOut + gap; h < n1 - 1; h++) if (!sb(h - 1) && sb(h) && sb(h + 1)) { rel = h; break; } res.bHold = [0, rel != null ? rel : n1]; }
+  // does the old song sing again anywhere after its voice is due out (to the end of the mix)? then it has to leave (cleanly) right there
+  res.aAgain = false; for (let h = res.aOut + 1; h < o.total * H; h++) if (sa(h)) { res.aAgain = true; break; }
   return res;
 }
 /* how much of a section is singing: centre voice band (300 Hz-3.4 kHz) above the sides, 0..1 */
@@ -2428,6 +2437,8 @@ async function startProMix() {
   if (lb) { pB = lb.P; bStart = Math.max(0, lb.anchor + Math.round((bStart - lb.anchor) / pB) * pB); }
   // RHYTHM LOCK: line up the bars, not just the beats: kick on kick, snare on snare
   const aCutR = M + slice * pA, rr = rhythmMatch(rhythmSig(from.el.buf, aCutR, pA, 8), rhythmSig(to.el.buf, bStart, pB, 8));
+  // THE TWO RHYTHMS CLASH: they must not play together. The old beat drops out at the cut-in and its voice rides the new beat.
+  const rhythmClashed = (!!rr && rr.score < 0.45) || window.__forceClash === true;   // (__forceClash: the test harness only)
   if (rr && rr.k) bStart += rr.k * pB;
   // whole-number tempos: the old song locks to N0 at the loop; a tempo ride steps it to N, one bar at a time
   const N0 = Math.round(60 / pA * rA0), NB = Math.round(60 / pB);
@@ -2769,6 +2780,9 @@ async function startProMix() {
   // CONFIRMED SPOT ON, OR THE BEATS NEVER MEET: the two beats only play together when the kicks locked to a few ms. If they
   // can't (no clear kicks in the mix, a live drummer drifting), it's the smooth filter blend instead: never a train wreck
   let blendWhy = mode === "cut" ? "the tempos are too far apart to beat-match" : null;
+  // THE TWO RHYTHMS CLASH and there's no clean way to take the old beat out (no instrumentals for both songs): they don't play
+  // together. The old beat echoes out as the new song comes in (the cut style)
+  if (mode !== "cut" && rhythmClashed && !(from.stem && from.stem.track === ft && to.stem && to.stem.track === nt)) { mode = "cut"; blendWhy = "the two rhythms clash, so they don't play together: the old beat echoes out as the new song comes in"; }
   if (mode !== "cut" && !(kickInfo && kickInfo.ok) && !window.__forceBeat) { mode = "cut"; blendWhy = !kickInfo ? "one of the songs has no clear groove here to lock to" : kickInfo.clear < 1.12 && !(kickInfo.kickTie >= 1.25) ? `the two grooves could line up in more than one spot (only ${kickInfo.clear}× surer than the next spot): a beat mix could flam` : kickInfo.n < 2 || kickInfo.n < 0.5 * kickInfo.of ? "not enough of the blend has a clear groove in both songs" : `the grooves drift apart by up to ${kickInfo.worst} ms in places (${kickInfo.rms} ms on average; it has to be on the beat everywhere)`; }
   // quiet intros and outros are lifted to the songs' full level: no low points
   const gA = mode === "cut" ? 1 : lift(from.el.buf, aCut, aCut + Math.max(16, L1) * pA), gB = lift(to.el.buf, bStart + bPre * pB, bStart + bPre * pB + Math.max(16, L1) * pB), gL = lift(from.el.buf, M, M + slice * pA);
@@ -2857,7 +2871,7 @@ async function startProMix() {
       src.start(tCut, k0); src.stop(tStop + 0.1); layer = { src, beats: stopBeat };
     }
   }
-  const q = 0.004; let tMash = null, tExt = null, tSwap = tCut, tEnd, karAt = null, riderMax = 0, exitAt = null;
+  const q = 0.004; let tMash = null, tExt = null, tSwap = tCut, tEnd, karAt = null, riderMax = 0, exitAt = null, fadeOutAt = null;
   // at the swap: does the new song bring its own bass right away? if not, the old bass stays and fades instead of cutting;
   // a quiet section right after the swap stays at full level
   const aSw = aCut + (L1 + xExt + xMash) * pA, bSw = bStart + (L1 + xExt + xMash) * P * rBx;
@@ -2973,11 +2987,12 @@ async function startProMix() {
     // VOCAL RIDE: the old song still sings when the new beat lands: on some mixes its beat drops out and its words ride on the
     // new song's beat until the line ends (then the echo), and the new song's own words wait their turn
     // (a line or two: it ends on the old song's first finished line between beats 8 and 24)
-    let rideEnd = null; if (S.vocalRide !== "off" && stA && mode === "beat" && vp.aKnown && vp.echo && !hookPlan && (mixCount + 1) % 2 === 0 && vp.sa(4 * H))
+    let rideEnd = null; if (S.vocalRide !== "off" && stA && mode === "beat" && vp.aKnown && vp.echo && !hookPlan && (rhythmClashed || (mixCount + 1) % 2 === 0) && vp.sa(4 * H))
       for (let h = 8 * H; h <= Math.min(24 * H, vp.aOut); h++) if (vp.sa(h - 1) && !vp.sa(h)) { rideEnd = h; break; }
+    if (rideEnd == null && rhythmClashed && vp.echo && vp.aOut >= 4 * H && vp.sa(4 * H) && S.vocalRide !== "off" && stA && mode === "beat" && !hookPlan) rideEnd = vp.aOut;   // clashing rhythms: the old voice rides the new beat to its planned end
     if (rideEnd != null) {
       vp.aOut = rideEnd; karAt = tOf(rideEnd);
-      const tR = tCut + 4 * P, tE = karAt;
+      const tR = rhythmClashed ? tCut : tCut + 4 * P, tE = karAt;   // (clashing rhythms: the old beat is gone at the cut-in)
       from.gain.gain.cancelScheduledValues(tR); from.gain.gain.setValueAtTime(gA, tR); from.gain.gain.linearRampToValueAtTime(0.0001, tR + 0.25 * P);
       auto(from.vride.gain, [[tR - 0.01, 0, "set"], [tR + 0.05, 1.15 * normGain(ft), "lin"], [tE - 0.02, 1.15 * normGain(ft), "set"], [tE + 0.15, 0.0001, "lin"]]);
       to.low.gain.cancelScheduledValues(tR); to.low.gain.setValueAtTime(-6, tR); to.low.gain.linearRampToValueAtTime(0, tR + 0.25 * P);   // the new beat carries it
@@ -2998,8 +3013,11 @@ async function startProMix() {
     // THE OLD SONG'S VOICE stays at full volume over the new beat until it has to stop (before the new song's lead vocal).
     // With its real instrumental here, its music carries on cleanly. Without it (the vocal remover would leave a ghost of
     // the voice), the whole old song ECHOES OUT on the beat right there and the new song carries on alone.
-    if (!vp.aAgain && !(vp.aKnown && vp.sa(vp.aOut))) karAt = null;      // it doesn't sing again in the mix: nothing to take out
+    if (!vp.aAgain && vp.aKnown && !vp.sa(vp.aOut)) karAt = null;      // it doesn't sing again in the mix, and it is silent when due out: nothing to take out (an unknown voice is always taken out)
     else if (!stA && vp.aKnown && karAt != null && karAt > tCut + 2 * P && karAt < tSwap) exitAt = karAt;
+    // clashing rhythms with no vocal ride: the old song leaves at the cut-in, so its beat never plays together with the new one
+    // (the old song fades out at once, so the new song carries on alone and the mix keeps its length: the exit path would end the mix there)
+    if (rhythmClashed && rideEnd == null && exitAt == null) { from.gain.gain.cancelScheduledValues(tCut); from.gain.gain.setValueAtTime(gA, tCut); from.gain.gain.linearRampToValueAtTime(0.0001, tCut + 0.25 * P); karAt = null; fadeOutAt = tCut + 0.25 * P; }
     if (exitAt != null) {
       const tX = exitAt; karAt = null; vp.mashVoice = null; vp.exit = Math.round((tX - tCut) / P);
       setParam(from.delay.delayTime, Math.min(3.9, 0.75 * P)); setParam(from.fb.gain, 0.6); setParam(from.wet.gain, 0.85);
@@ -3046,7 +3064,7 @@ async function startProMix() {
     // A CLASH: the clashing music fades out and the beats hit. Notes that don't fit: before the swap the new song brings its
     // drums (its chords and synths stay back), and at the swap the old song's music fades out with its last line. Grooves
     // that fight: the old song's hats and percussion step back as soon as the new beat is in
-    const rClash = rr ? rr.score < 0.45 : clash.rhythm;
+    const rClash = (rr ? rr.score < 0.45 : clash.rhythm) || window.__forceClash === true;
     if (clash.harm) { const tF = tCut + (fadeB != null ? fadeB : mixEnd - 2) * P; auto(to.mid.gain, [[tCut - 0.01, -10, "set"], [tSwap - 0.03, -10, "set"], [tSwap + 2 * P, -3, "lin"], [tF, -3, "set"], [tF + 2 * P, 0, "lin"]]); }   // (the old voice finishes its line and echoes out)
     if (rClash && !hatClash) auto(from.high.gain, [[tCut + Math.min(8, XIN) * P, 0, "set"], [tCut + (Math.min(8, XIN) + 4) * P, -8, "lin"]]);
     vp.clash = clash.any || rClash ? { harm: !!clash.harm, rhythm: !!rClash, cents: clash.cents, key: clash.kl } : null;
@@ -3141,7 +3159,7 @@ async function startProMix() {
   { const dt = (performance.now() - planT0) / 1000; planEst = clamp(0.7 * planEst + 0.3 * dt, 0.3, 8); lsSet("cb.planEst", +planEst.toFixed(2)); mixPlanMs = Math.round(dt * 1000);
     if (tM < actx.currentTime) logMix("late", `planning took ${dt.toFixed(1)} s: the mix began ${(actx.currentTime - tM).toFixed(1)} s late`); }
   Object.assign(mix, { pending: false, pro: true, mode, t0: tM, points, riderMax: +riderMax.toFixed(1), cutAt: tCut, mashAt: tMash, swapAt: tSwap, end: tEnd, dur: tEnd - tM, rate: rBx, N0, N: Nb, NB, drift,
-    synced: false, nextP: null, curP: pA, style: "beatmix", flavor: "none", score: mixScore(ft, nt, rA0).pct, karAt, bHold: bHoldT, bassReady: bassReadyK, bassK, extAt: tExt, ride: vp && vp.ride, beatSec: P, M, bStart, rA: rateA(N), loopLen, slice,
+    synced: false, nextP: null, curP: pA, style: "beatmix", flavor: "none", score: mixScore(ft, nt, rA0).pct, karAt, voiceOff: exitAt != null ? exitAt : fadeOutAt != null ? fadeOutAt : karAt, bHold: bHoldT, bassReady: bassReadyK, bassK, extAt: tExt, ride: vp && vp.ride, beatSec: P, M, bStart, rA: rateA(N), loopLen, slice,
     pA, pB, lockA: !!la, lockB: !!lb, lag: Math.round(lag * 1000), lagQ, kickShift, kick: kickInfo, layer, nudges: nudges.map(x => Math.round(x[1] * 1000)), layerBeats: layer ? layer.beats : 0, gA: +gA.toFixed(2), gB: +gB.toFixed(2), vocIn, master, bPre, bLoopB, bLoopFrom, loopScale, bBeat, introAt, tB0, exitAt, oldLoopInfo, newVoiceAt: bVoiceT, warpPos: warp && warp.info.ok && mode !== "cut" ? { a: warp.posA, b: warp.posB, until: tCut + mixEnd * P } : null, oldLoopW: vp && vp.oldLoop || null });
   lastMixInfo = { at: Date.now(), from: ft.title, to: nt.title, mode, N0, N: Nb, lag: Math.round(lag * 1000), lagQ, drift, points, riderMax: +riderMax.toFixed(1), layer: !!layer, nudges: nudges.length, lockA: !!la, lockB: !!lb, gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
   // the loop leg's move: a DJ drop when one is due, otherwise scratches, a beat roll or a word tease (rotating)
@@ -4013,7 +4031,7 @@ function refineTrack(t, buf) {
 /* ---------- app state ---------- */
 const st = { hooks: new Map(), loops: new Map(), tracks: new Map(), playlists: [], view: lsGet("cb.view") || "library", sort: lsGet("cb.sort") || { k: "added", dir: -1 }, q: "",
   queue: [], qi: -1, nextI: null, forcedNext: false, played: new Set(), playing: false, queueSource: null, busy: "", history: [],
-  queueView: null, cue: [], libOrder: lsGet("cb.libOrder") || null, pendingDelete: null };
+  queueView: null, cue: [], libOrder: lsGet("cb.libOrder") || null, pendingDelete: null, genres: new Set() };
 const curPl = () => st.playlists.find(p => p.id === st.view) || null;
 function viewTracks() {
   let list;
@@ -4029,6 +4047,7 @@ function viewTracks() {
     const val = t => k === "title" ? t.title.toLowerCase() : k === "artist" ? (t.artist || "").toLowerCase() : k === "bpm" ? (t.bpm || 0) : k === "key" ? (t.key ? parseInt(t.key) * 2 + (t.key.endsWith("B") ? 1 : 0) : 99) : k === "time" ? (t.duration || 0) : t.added;
     if (st.sortClicked) list.sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * dir);
   }
+  if (!pl && st.genres.size) list = list.filter(t => (t.genres || []).some(g => st.genres.has(g)));   // the genre bar: songs in any picked genre
   if (st.q) { const q = st.q.toLowerCase(); list = list.filter(t => (t.title + " " + (t.artist || "") + " " + (t.key || "") + " " + keyName(t.key)).toLowerCase().includes(q)); }
   return list;
 }
@@ -4136,6 +4155,7 @@ const AUDIO_RX = /\.(mp3|m4a|mp4|m4v|aac|wav|aif|aiff|flac|ogg|oga|opus|webm|mov
    the library (matched by its file name) and is kept with it; no audio is copied again */
 async function importDrumMaps(f) {
   let j; try { j = JSON.parse(await f.text()); } catch (e) { toast("That drum-maps file couldn't be read."); return 0; }
+  if (j && j.genres && j.songs) return importGenres(j);
   if (j && j.patches) return importCleanPatches(j.patches);
   const maps = j && j.maps ? j.maps : {}; let n = 0, nc = 0;
   for (const t of [...st.tracks.values(), ...st.loops.values()]) {
@@ -4149,6 +4169,15 @@ async function importDrumMaps(f) {
   if (nc) { decks.forEach(d => { uncleanDeck(d); cleanDeck(d); }); renderVox(); voxFrame(); prepBgClean(A()); }
   toast(n || nc ? [n ? `Drum maps added to ${n.toLocaleString()} song${n === 1 ? "" : "s"}: their beats now lock on their own drums.` : "", nc ? `${nc.toLocaleString()} song${nc === 1 ? " is" : "s are"} now checked for Clean mode: only their cuss words are taken out.` : ""].filter(Boolean).join(" ") : "None of these drum maps match songs in your library yet (add the songs first).", 8000);
   return n + nc;
+}
+/* GENRES (Apex Genres.json, from the Mac): each song's genres (a song can have more than one), matched by file name and kept
+   with the song. The genre bar in My DJ Library picks songs from them. */
+async function importGenres(j) {
+  const G = j.songs || {}; let n = 0;
+  for (const t of st.tracks.values()) { const g = G[t.fileName]; if (!Array.isArray(g)) continue; t.genres = g.filter(x => GENRE_NAMES.includes(x)); try { await dbPut("tracks", t); } catch (x) {} n++; }
+  renderAll();
+  toast(n ? `Genres added to ${n.toLocaleString()} songs. Pick up to three in My DJ Library and make a playlist.` : "None of the songs in this file are in your library yet (add the songs first).", 7000);
+  return n;
 }
 /* CLEAN PATCHES (Apex Clean Patches.json, from the Mac): for each song, the music alone under each of its flagged words
    (Demucs took the voice out). Clean mode writes it over the word: just the voice is gone, the beat and the music play on */
@@ -4523,12 +4552,58 @@ function mixTagFor(prev, t, i, mine) { // how this song comes in after the one a
   const sc = mixScore(prev, t); if (sc.ok) return `<span class="mixtag m">mix ${sc.pct}%</span>`;
   return mixMode(prev, t) === "ride" ? `<span class="mixtag r">tempo ride</span>` : `<span class="mixtag c">filter blend</span>`;
 }
+/* GREEN / ORANGE in the song list: a song is GREEN when it can beat-mix with another song in the library (either way round, at the
+   mix match setting), ORANGE when it can't yet. Only songs in the tempo window are compared (half, normal and double time, as
+   bpmMatch does), so a big library stays quick; the answer is kept until the library or the mix match changes. */
+let mixOkCache = { key: "", ok: new Map() };
+function mixableMap() {
+  const ts = libAll().filter(t => t.bpm && !t.isInst), key = `${ts.length}:${S.mixMin}:${S.maxStretch}`;
+  if (mixOkCache.key === key) return mixOkCache.ok;
+  const sorted = ts.slice().sort((x, y) => x.bpm - y.bpm), bp = sorted.map(t => t.bpm), s = Math.max(0.01, S.maxStretch / 100);
+  const firstAtLeast = v => { let lo = 0, hi = bp.length; while (lo < hi) { const m = (lo + hi) >> 1; if (bp[m] < v) lo = m + 1; else hi = m; } return lo; };
+  const ok = new Map();
+  for (const a of ts) {
+    let hit = false;
+    for (const f of [1, 2, 0.5]) {
+      const from = firstAtLeast(a.bpm / ((1 + s) * f)), to = firstAtLeast(a.bpm / ((1 - s) * f) * (1 + 1e-9));
+      for (let i = from; i < to && !hit; i++) { const b = sorted[i]; if (b !== a && (mixScore(a, b).ok || mixScore(b, a).ok)) hit = true; }
+      if (hit) break;
+    }
+    ok.set(a.id, hit);
+  }
+  mixOkCache = { key, ok }; return ok;
+}
+/* GENRE PLAYLISTS: pick one to three genres in My DJ Library; the songs in any of them can play as one set (best mixes first),
+   or be made into a playlist of their own (named after the genres, renamed like any playlist). Songs get their genres from
+   "Apex Genres.json" (from the Mac; add it under Add music). */
+const GENRE_NAMES = ["Hip Hop", "Old School", "Classic Rock", "Dance"];
+function toggleGenre(g) {
+  if (st.genres.has(g)) st.genres.delete(g);
+  else if (st.genres.size >= 3) return toast("Up to three genres at a time: take one off first.", 3000);
+  else st.genres.add(g);
+  renderAll();
+}
+function genreLabel() { return [...st.genres].join(" + ") || "Genre mix"; }
+function playGenres(shuffle) {
+  const ids = viewTracks().filter(t => !t.bad).map(t => t.id); if (!ids.length) return toast("No songs in those genres yet.");
+  st.view = "library"; lsSet("cb.view", st.view); st.q = ""; $("#q").value = ""; renderAll();
+  if (shuffle) { setQueue(ids); hardPlay(Math.floor(Math.random() * st.queue.length)); S.nextMode = "shuffle"; saveS(); renderTransport(); return toast(`Shuffling ${ids.length.toLocaleString()} ${genreLabel()} songs.`, 3000); }
+  if (S.nextMode === "shuffle") { S.nextMode = "best"; saveS(); renderTransport(); }
+  hardPlay(queueBest(ids)); toast(`Playing ${ids.length.toLocaleString()} ${genreLabel()} songs, best mixes first.`, 3000);
+}
+async function makeGenrePlaylist() {
+  const ids = viewTracks().filter(t => !t.bad).map(t => t.id); if (!ids.length) return toast("No songs in those genres yet.");
+  const base = genreLabel(); let name = base, k = 2; while (st.playlists.some(p => p.name === name)) name = `${base} ${k++}`;
+  const p = await createPlaylist(name, ids);
+  st.genres.clear(); st.view = p.id; lsSet("cb.view", st.view); st.q = ""; renderAll();
+  toast(`Made “${p.name}”: ${ids.length.toLocaleString()} songs from those genres. Play it, or rename it.`, 4500);
+}
 const ORDERS = [["mix", "Mix", "Mix order"], ["bpm", "BPM", "By BPM"], ["alpha", "A–Z", "A to Z"], ["mine", "Mine", "My order"]];
 function renderList() {
   const pl = curPl(), list = viewTracks(), ref = A().track;
   if (st.view !== "library" && !pl) { st.view = "library"; }
   const all = pl ? pl.ids.map(id => st.tracks.get(id)).filter(Boolean) : libAll();
-  const bpms = all.map(t => t.bpm).filter(Boolean);
+  const bpms = all.map(t => t.bpm).filter(Boolean), mixOk = mixableMap();
   const stats = `<div class="stats"><span class="stat songs"><b>${all.length.toLocaleString()}</b>song${all.length === 1 ? "" : "s"}</span><span class="stat time"><b>${fmtLong(totalTime(all))}</b>total time</span>${bpms.length ? `<span class="stat tempo"><b>${Math.round(Math.min(...bpms))}–${Math.round(Math.max(...bpms))}</b>BPM</span>` : ""}</div>`;
   const busy = `<div class="busy" id="busy" ${st.busy ? "" : "hidden"}><span>${esc(st.busy)}</span><button type="button" data-act="stopimport">Stop</button></div>`;
   let head = `<div class="vhead"><div class="titles"><h1 class="${pl ? "" : "tt"}">${esc(pl ? pl.name : "My DJ Library")}</h1>${stats}</div><div class="acts">`;
@@ -4537,6 +4612,12 @@ function renderList() {
   if (mixView) head += `<div class="mixctl">Beat-mix songs that match <select data-mixmin aria-label="Minimum mix match">${[96, 92, 88, 84, 80].map(v => `<option value="${v}" ${S.mixMin === v ? "selected" : ""}>${v}%+</option>`).join("")}</select> · the rest <select data-unmatched aria-label="Songs below the match"><option value="play" ${S.unmatched !== "skip" ? "selected" : ""}>play after</option><option value="skip" ${S.unmatched === "skip" ? "selected" : ""}>are skipped</option></select></div>`;
   if (pl) head += `<button class="btn ghost" type="button" data-act="libplay" title="Play every song in the app, best mixes first">▶ Play whole library</button><button class="btn ghost" type="button" data-act="renamepl">Rename</button><button class="btn ghost danger" type="button" data-act="delpl">Delete folder</button>`;
   head += `</div></div>`;
+  if (!pl && !st.sel && libAll().some(t => t.genres && t.genres.length)) {
+    const cnt = g => libAll().filter(t => !t.bad && (t.genres || []).includes(g)).length, picked = [...st.genres];
+    head += `<div class="genrebar" role="group" aria-label="Genres (pick up to three)"><span class="gl">Genres (up to three)</span>${GENRE_NAMES.map(g => `<button type="button" class="gchip${st.genres.has(g) ? " on" : ""}" data-genre="${esc(g)}" aria-pressed="${st.genres.has(g)}">${esc(g)} <small>${cnt(g).toLocaleString()}</small></button>`).join("")}</div>`;
+    if (picked.length) head += `<div class="genreact"><span><b>${esc(picked.join(" + "))}</b>: ${list.length.toLocaleString()} song${list.length === 1 ? "" : "s"}</span><button class="btn primary" type="button" data-act="genplaylist" ${list.length ? "" : "disabled"}>+ Make a playlist</button><button class="btn" type="button" data-act="genplay" ${list.length ? "" : "disabled"}>▶ Play</button><button class="btn ghost" type="button" data-act="genclear">Clear</button></div>`;
+  }
+  if (all.length > 1 && !st.sel) head += `<div class="mixlegend"><span><i style="background:#22c55e"></i>mixes with another song in your library</span><span><i style="background:#f97316"></i>doesn't mix yet</span></div>`;
   // the list's header row: stays at the top while you scroll (sort, play, select, back to the top); it never runs off the screen
   if (all.length && !st.sel) head += `<div class="listbar" role="toolbar" aria-label="Song order and play">${all.length > 1 ? `<div class="seg3" role="group" aria-label="Song order">${ORDERS.map(([k, l]) => `<button type="button" data-plsort="${k}" aria-pressed="${ord === k}">${l}</button>`).join("")}</div><select class="ordsel" data-plsel aria-label="Song order">${ORDERS.map(([k, , l]) => `<option value="${k}" ${ord === k ? "selected" : ""}>${l}</option>`).join("")}${ord ? "" : `<option value="" selected>Your sort</option>`}</select>` : ""}<button type="button" class="lb lb-play" data-act="playall">▶ Play</button><button type="button" class="lb" data-act="select">Select</button><button type="button" class="lb lb-top" data-act="totop" aria-label="Back to the top" title="Back to the top">↑</button></div>`;
   if (st.sel && list.length) {
@@ -4574,7 +4655,7 @@ function renderList() {
     const sh = (k, label, cls = "") => pl ? `<span class="${cls}">${label}</span>` : `<button type="button" class="${cls}" data-sort="${k}" ${st.sort.k === k ? `data-dir="${st.sort.dir > 0 ? "↑" : "↓"}"` : ""}>${label}</button>`;
     body = `<div class="list" role="list"><div class="lhead"><span>#</span>${sh("title", "Title / Artist")}${sh("bpm", "BPM")}${sh("key", "Key")}${sh("time", "Time", "h-time")}<span></span></div>`
       + list.map((t, i) => (mixView && i === mixOrderCache.chained && i < list.length && i > 0 ? `<div class="mixsep">${S.unmatched === "skip" ? `Below ${S.mixMin}% match: these won't play in auto mix` : `Below ${S.mixMin}%: these play after, highest BPM first, with tempo rides and filter blends`}</div>` : "")
-        + `<div class="row ${t.isInst ? "inst" : ""} ${scanned(t) && t.explicit.length ? "xpl" : ""} ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
+        + `<div class="row ${t.isInst ? "inst" : ""} ${mixOk.get(t.id) === true ? "mixgreen" : mixOk.get(t.id) === false || (!t.isInst && !t.bpm) ? "mixorange" : ""} ${scanned(t) && t.explicit.length ? "xpl" : ""} ${ref && ref.id === t.id ? "on" : ""} ${st.sel && st.sel.has(t.id) ? "picked" : ""} ${mixView && S.unmatched === "skip" && i >= mixOrderCache.chained && i > 0 ? "dim" : ""}" role="listitem" data-id="${t.id}">
         ${st.sel ? `<input class="pick" type="checkbox" data-act="pick" ${st.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}">` : mineView ? `<span class="r-n grip" role="button" aria-label="Drag to move ${esc(t.title)}" title="Drag to move"><span>${i + 1}</span><i>≡</i></span>` : `<button class="r-n" type="button" data-act="play" aria-label="Play ${esc(t.title)}"><span>${i + 1}</span>${ICON_PLAY}</button>`}
         <button class="r-t" type="button" data-act="${st.sel ? "pick" : "tap"}"><b>${favs.has(t.id) ? `<span class="fav" title="Favorite">♥</span>` : ""}${t.bad ? `<span class="ex" title="This file couldn't be played: delete it and add it again">⚠</span> ` : ""}${esc(nm(t.title))}${scanned(t) && t.explicit.length ? "" : S.clean && scanned(t) ? `<span class="ex ok" title="Checked: no cuss words">✓</span>` : S.clean && !t.isInst && S.cleanUnscanned !== "asis" ? `<span class="ex wait" title="Not checked for cuss words yet: Clean mode plays it with the vocals taken out">not checked</span>` : ""}</b><small>${t.id === nextId ? `<span class="nexttag">${mix ? "MIXING IN" : "NEXT"}</span>` : st.cue.includes(t.id) ? `<span class="nexttag cue">CUE ${st.cue.indexOf(t.id) + 1}</span>` : ""}<span class="mt num dur" title="${scanned(t) && t.explicit.length ? `Explicit: ${t.explicit.length} cuss word${t.explicit.length === 1 ? "" : "s"}${S.clean ? ", taken out by Clean mode" : " (Clean mode takes them out)"}. ` : ""}Length">${scanned(t) && t.explicit.length ? `<i class="xst">✱</i>` : ""}${fmt(t.duration)}</span>${(mixView || mineView) && i > 0 ? mixTagFor(list[i - 1], t, i, mineView) : ""}${t.energy ? `<span class="en" style="--e:${t.energy}" title="Energy ${t.energy} of 10">⚡${t.energy}</span> ` : ""}${esc(nm(t.artist) || "Unknown artist")}</small></button>
         <div class="r-b ${t.bpm ? "" : "none"}" style="--bh:${t.bpm ? Math.round(clamp(230 - (t.bpm - 70) * 2.6, 0, 230)) : 200}" title="${t.bpmAuto ? "Detected automatically" : "From you or the file"}">${t.bpm ? Math.round(t.bpm) : "–"}</div>
@@ -4727,7 +4808,9 @@ function voxWanted(d, pos) {
   const base = voxBase(d, pos);
   if (!mix || mix.pending || !mix.pro || !actx) return base;
   const now = actx.currentTime + 0.02;
-  const m = d === mix.from && mix.karAt != null && now >= mix.karAt ? "kar" : d === mix.to && mix.bHold && now >= mix.bHold[0] && now < mix.bHold[1] ? "kar" : "dry";
+  let m = d === mix.from && mix.karAt != null && now >= mix.karAt ? "kar" : d === mix.to && mix.bHold && now >= mix.bHold[0] && now < mix.bHold[1] ? "kar" : "dry";
+  // NEVER TWO VOICES: the new song's own words wait until the old song's voice has been taken out (or has left)
+  if (d === mix.to && m === "dry" && mix.voiceOff != null && now < mix.voiceOff) m = "kar";
   return VOX_RANK[m] > VOX_RANK[base] ? m : base;
 }
 function voxBase(d, pos) {
@@ -5835,8 +5918,14 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.24";
+const APP_VERSION = "10.26";
 const CHANGELOG = [
+  ["10.26", "October 19, 2026", ["NO TWO VOICES AT ONCE: in 4 of 29 test mixes the old song's voice was still singing when the new song's words came in. Now the old voice is always taken out when the new words are due (also when its vocal timing is unknown, or it sings again later in the mix), the new song's sung parts wait until it has gone, and the new words can't start while the old voice is still audible. Same 30 library pairs before and after: mixes with two voices at once 4 -> 0; the new words still come in inside the mix (23 of 29); median mix 144 beats",
+    "TWO RHYTHMS DON'T PLAY TOGETHER WHEN THEY CLASH: when the two beats clash, the old song's beat drops out at the cut-in and its voice rides the new beat until its planned end (songs with instrumentals); with no voice to ride, the old song fades out at the cut-in and the new song carries on alone; the mix keeps its length. Without instrumentals the mix uses the cut style: the old beat echoes out as the new song comes in. Tested with forced clashes on 12 random pairs: 7 of 11 instrumental mixes ride the old voice, 4 fade the old song out at the cut-in; all kept 144 beats and none had two voices at once. Clashes are rare in the library (none in 60 random same-tempo pairs), so this matters most for pairs you pick yourself",
+    "GENRE PLAYLISTS: Hip Hop, Old School, Classic Rock and Dance. In My DJ Library, pick one to three genres: the songs in them play as one set, best mixes first, or + Make a playlist from them (named after the genres; rename it like any playlist). A song can be in more than one genre. Add Apex Genres.json from iCloud (Add music), then add new songs again so they get their genres. Test: 14 songs; the genre file imports, three genres can be picked and a fourth is refused, the Dance playlist holds exactly the 12 Dance songs",
+    "GREEN AND ORANGE SONGS: a song is green when it can beat-mix with another song in your library (either way round, at your mix match), orange when it can't yet (no tempo counts as orange). A coloured stripe and title, with a legend above the list. Explicit songs keep their red title. Checked on 1,800 songs: about 30 ms",
+    "PROGRESS EMAILS: the phone steps are in a red box at the top, kept until you confirm each one; the scheduled emails go out every 2 hours by day and every 4 hours overnight",
+    "KNOWN, NOT FIXED YET: the first Mix order of a very big library (about 1,800 songs) takes several seconds after the songs change; instrumental pairs still fall back to an 18-beat cut on about 1 in 3 pairs (the groove check); about a 6 ms beat offset on the instrumental mix; some mixes without instrumentals still end at beat 56-80"]],
   ["10.24", "October 18, 2026", ["24 OUT: the old song's music now fades out over the last 24 beats of a 144-beat mix (24 in, 96 together, 24 out). It used to fade over about 100 beats on the instrumental mix, so the old song was still under the new song's words",
     "Where the old song sings again later in the mix, it still leaves on its last line, so its next line never plays under the new words"]],
   ["10.22", "October 18, 2026", ["THE INSTRUMENTAL MIX STARTS AS DESIGNED (the mixes your phone plays for songs with instrumentals): the new song's beat comes in at 60% and steps up to full by beat 32, the bass swap comes after 16 beats of both beats (it used to come after 128 beats, so the new song had no bass until over halfway), the old song's voice rides the new beat and leaves on its last line, and the mashup (the new words over the old instrumental) starts on the new song's first line. The mix starts so the old song's last line lands 56 beats in",
@@ -6228,6 +6317,7 @@ document.querySelectorAll(".bar").forEach(b => b.addEventListener("click", e => 
 document.addEventListener("click", e => {
   const v = e.target.closest("[data-view]"); if (v) { st.view = v.dataset.view; lsSet("cb.view", st.view); renderAll(); $("#content").scrollTop = 0; return; }
   if (e.target.matches && e.target.matches("[data-mixmin],[data-unmatched]")) return; // handled on change
+  const gn = e.target.closest("[data-genre]"); if (gn) { toggleGenre(gn.dataset.genre); return; }
   const ps = e.target.closest("[data-plsort]"); if (ps) { setOrder(ps.dataset.plsort); return; }
   const s = e.target.closest("[data-sort]"); if (s) { st.sortClicked = true; const k = s.dataset.sort; st.sort = { k, dir: st.sort.k === k ? -st.sort.dir : (k === "title" || k === "artist" || k === "key" ? 1 : -1) }; lsSet("cb.sort", st.sort); renderList(); return; }
   if (st.sel && !e.target.closest("[data-act]")) { const r = e.target.closest("#content .row"); if (r) { st.sel.has(r.dataset.id) ? st.sel.delete(r.dataset.id) : st.sel.add(r.dataset.id); const y = $("#content").scrollTop; renderList(); $("#content").scrollTop = y; return; } }
@@ -6241,6 +6331,9 @@ document.addEventListener("click", e => {
       if (pl) items.push([`Add to “${pl.name}”`, async () => { if (!pl.ids.includes(lid)) { pl.ids.push(lid); await dbPut("playlists", pl); } renderAll(); toast(`Added to “${pl.name}”.`, 2000); }]);
       menuSheet(nm(t.title), items); break; }
     case "libplay": playLibrary(false); break;
+    case "genplay": playGenres(false); break;
+    case "genplaylist": makeGenrePlaylist(); break;
+    case "genclear": st.genres.clear(); renderAll(); break;
     case "libfind": findAnySong(); break;
     case "nowfind": findPlaying(); break;
     case "nowfav": if (A().track) toggleFav(A().track.id); break;
