@@ -563,6 +563,8 @@ button{cursor:pointer}
   .player.open{overflow-x:hidden}
   .player.open .vol{flex-wrap:wrap}
   .player.open .tools{margin-left:0;width:100%;justify-content:flex-end}
+  .player.open .transport{flex:1 1 100%;width:100%;justify-content:center;gap:10px}   /* (10.34, Tony's screenshot: play and REC sat on the left of the open player) */
+  .player.open .vol{margin-left:auto;margin-right:auto}
   .ddlist{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));min-width:0;max-width:none;max-height:70%;overflow:auto;z-index:40}
   .toast{top:calc(10px + env(safe-area-inset-top,0px));bottom:auto}
 }
@@ -1669,7 +1671,7 @@ function planPro(d, nt, manual) {
   const origin = t.grid ? t.grid.downbeat : (t.beatOffset || 0);
   const snapUp = x => origin + Math.ceil((x - origin - 0.01) / bar) * bar, lastBar = origin + Math.floor((endP - origin) / bar) * bar;
   const minStart = cur + (manual ? 1.5 : 3) * (d.el.playbackRate || 1);
-  let M = null, loop = null, winLo = 0;
+  let M = null, loop = null, winLo = 0, short = null;
   if (!manual && t.apex && Array.isArray(t.apex.ph)) {
     const P = t.apex.ph, blocks = []; let bs = null;
     for (const [s0, e0, v] of P) { if (v <= 0.3) { if (bs == null) bs = s0; } else if (bs != null) { blocks.push([bs, s0]); bs = null; } }
@@ -1699,8 +1701,13 @@ function planPro(d, nt, manual) {
       if (t.apex && Array.isArray(t.apex.ph)) for (const [s0, e0, v] of t.apex.ph) { if (v > 0.3) continue; const c = snapUp(Math.max(s0, minStart)); if (c >= lo && c <= hi) { pickM = c; break; } }
       if (pickM == null) { const c = origin + Math.round((0.66 * dur - origin) / ph) * ph; pickM = c >= minStart ? c : snapUp(Math.max(minStart, lo)); }
       // a short song (the whole mix is longer than its last 40%): the latest phrase or bar where the whole mix still fits
-      if (pickM + need > endP) { const fit = endP - need; const cPh = origin + Math.floor((fit - origin) / ph) * ph, cBar = origin + Math.floor((fit - origin) / bar) * bar; pickM = cPh >= lo - 16 * pA ? cPh : cBar; }
-      if (pickM >= minStart && pickM + need <= endP + 0.01) { M = pickM; loop = null; } }
+      // (10.34, Tony: "short radio edits like Lil Boo Thang: play the instrumental through the mix in and transfer back to the lyrics
+      // at the right point after the mix out song ends, 8 beats"): with both instrumentals the old beat is out at beat 24 anyway, so a
+      // short song keeps its 60% start; its last beats carry the samples, and the new song's words wait for its end + 8 beats
+      const XINs = mixShape().XIN, tailOk = mode !== "cut" && XINs >= 24 && !!instMap().get(t.fileName) && !!(nt && instMap().get(nt.fileName));
+      if (pickM + need > endP && tailOk && pickM >= minStart && pickM + (loopLen + XINs + 24) * pA <= endP) short = endP;
+      else if (pickM + need > endP) { const fit = endP - need; const cPh = origin + Math.floor((fit - origin) / ph) * ph, cBar = origin + Math.floor((fit - origin) / bar) * bar; pickM = cPh >= lo - 16 * pA ? cPh : cBar; }
+      if (pickM >= minStart && (short != null || pickM + need <= endP + 0.01)) { M = pickM; loop = null; } }
     winLo = Math.min(M, lo); }
   // THE OLD SONG MUST STILL HAVE A STEADY KICK for the whole blend (that's what the two beats lock on, kick on kick): if the
   // planned spot runs into its fade-out or a beatless outro, the mix moves back to the last phrase where it does
@@ -1709,17 +1716,17 @@ function planPro(d, nt, manual) {
     const ks = songKicks(d.el.buf), n = master ? mixLock() + MIX_EXT + MIX_MASH : mixShape().XIN + mixShape().XT;
     const cov = m => { const a0 = m + loopLen * pA; let hit = 0; for (let k = 0; k < n; k++) { const tb = a0 + k * pA; let lo = 0, hi = ks.length - 1; while (hi - lo > 1) { const md = (lo + hi) >> 1; if (ks[md] < tb) lo = md; else hi = md; } if (ks.length && Math.min(Math.abs(ks[lo] - tb), Math.abs(ks[hi] - tb)) < 0.05) hit++; } return hit / n; };
     kickCov = cov(M);
-    if (kickCov < 0.75) {
+    if (kickCov < 0.75 && short == null) {
       let bm = M, bc = kickCov;
       for (let m = origin + Math.floor((endP - need - origin) / (16 * pA)) * 16 * pA; m >= Math.max(minStart, 0.3 * dur, winLo - 0.01); m -= 16 * pA) { const c = cov(m); if (c >= 0.75) { bm = m; bc = c; break; } if (c > bc + 0.05) { bm = m; bc = c; } }
       if (bm !== M) { M = bm; loop = null; } kickCov = bc;
     }
     // ...AND ITS DRUM MAP TIGHT THERE: the old song is the clock every beat of the new one locks to, so if its map is loose
     // over the planned stretch (a live drummer's fill, a breakdown), the mix moves back to the latest phrase where it isn't
-    if (t.prep && t.prep.q && !master) { const span = mixShape().TOT * pA, okAt = m => { const a0 = m + loopLen * pA; return mapOk(t, a0, a0 + span); };
+    if (t.prep && t.prep.q && !master && short == null) { const span = mixShape().TOT * pA, okAt = m => { const a0 = m + loopLen * pA; return mapOk(t, a0, a0 + span); };
       if (!okAt(M)) for (let m = M - 16 * pA; m >= Math.max(minStart, 0.3 * dur, winLo - 0.01); m -= 16 * pA) if (okAt(m) && cov(m) >= 0.75) { M = m; loop = null; break; } }
   }
-  return { start: M, swap: M + need, end: M + need, pro: true, loop, loopLen, mode, kickCov };
+  return { start: M, swap: M + need, end: M + need, pro: true, loop, loopLen, mode, kickCov, short };
 }
 const FADE = 7; // seconds: with auto mix off, songs still cross-fade smoothly at the very end
 function fadePlan(d) { const e = endPoint(d); return { start: Math.max(0, e - FADE), swap: e - FADE / 2, end: e, fade: true }; }
@@ -3210,6 +3217,8 @@ async function startProMix() {
   if (mode !== "cut" && master) {
     vp = planVocals({ ft, nt, aPos: b => b < 0 ? M + ((b + loopLen) % slice) * pA : wrapA(aCut + b * pA), bPos: b => bStart + b * pB, startBeat: -loopLen, total: totalB, swapBeat: swapB, aOutBy: mashB, holdOk: !!stB });
     const H = vp.H, tOf = h => h >= 0 ? tCut + (h / H) * P : tCut + (h / H) * beatLoop;
+    const shortEndB = plan.short != null ? Math.max(0, Math.floor((plan.short - aCut) / pA)) : null;   // (10.34: a short song: where it really ends, in mix beats)
+    if (shortEndB != null && vp.aOut > shortEndB * H) vp.aOut = shortEndB * H;   // (its voice never rides past its own end: no looped words)
     // the mashup hook: a full sentence from another song, in the gap (or with the new words held a little longer for it)
     if (extrasOn("hooks") && S.useHooks !== false && (mixCount + 1) % 3 !== 2) {
       const hk = hookFor(nt, ft, Nb);
@@ -3253,7 +3262,7 @@ async function startProMix() {
       // hype part of the mix, this is the worst time to do anything like that". Its kick and bass went with its music while the
       // old song's bass was already out: 16 beats with no low end at the peak. The energy holds or builds through a mix, never dips.)
     }
-    if (S24) { let rel = null; for (let h = 56 * H; h < totalB * H - 1; h++) if (vp.sb && lineStart(vp.sb, h)) { rel = h; break; } vp.bHold = [0, Math.max(vp.bHold ? vp.bHold[1] : 0, rel != null ? rel : 56 * H)]; }   // 24/96/24: the new words never rush in (beat 56 or later)
+    if (S24) { const hf = Math.max(56, shortEndB != null ? shortEndB + 8 : 0); let rel = null; for (let h = hf * H; h < totalB * H - 1; h++) if (vp.sb && lineStart(vp.sb, h)) { rel = h; break; } vp.bHold = [0, Math.max(vp.bHold ? vp.bHold[1] : 0, rel != null ? rel : hf * H)]; }   // 24/96/24: the new words never rush in (beat 56 or later)
     if (vp.bHold) { bHoldT = [tCut - 0.05, tOf(vp.bHold[1])]; bVoiceT = bHoldT[1]; } else if (vp.hB != null) bVoiceT = tOf(vp.hB);
     // THE OLD SONG'S VOICE stays at full volume over the new beat until it has to stop (before the new song's lead vocal).
     // With its real instrumental here, its music carries on cleanly. Without it (the vocal remover would leave a ghost of
@@ -6492,8 +6501,11 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.33";
+const APP_VERSION = "10.34";
 const CHANGELOG = [
+  ["10.34", "October 23, 2026", ["SHORT RADIO EDITS (like Lil Boo Thang): the new beat still comes in 60% of the way through. The next song plays its instrumental through the whole mix in, the short song's own voice never repeats past its end, and the new song's words come back on a full line 8 beats after the short song ends",
+    "PLAY AND REC IN THE MIDDLE of the open player too (and the volume bar under them)",
+    "SAVE SEVERAL RECORDINGS AT ONCE on iPhone: tick them (or Select all) and tap Save: one share sheet with all of them, so Save to Files takes them together (it used to fall back to one at a time)"]],
   ["10.33", "October 22, 2026", ["LONGER, BIGGER MIXES: both songs now ride together for 96 beats by default (it was 64), with the new beat coming in 60 to 75% of the way through the playing song",
     "YOUR FAVORITE SAMPLES FIRST: Axel F, Don't Stop The Rock, Play At Your Own Risk, Electric Kingdom, Siberian Nights, Egyptian Lover, Lookout Weekend, When I Hear Music, Magic Mike Cuts The Record, Apache, Fly Like An Eagle and Don't You Forget About Me hooks and breaks are picked first whenever they fit the tempo and key",
     "SEARCH: an × at the end of the search bar clears the whole line in one tap and keeps the keyboard up for your next search",
@@ -7125,10 +7137,18 @@ function recSheet() {
     const saveSel = s.querySelector("#recSaveSel"), delAll = s.querySelector("#recDelAll");
     const sync = () => { const n = picked().length; if (delSel) { delSel.disabled = !n; delSel.textContent = n ? `Delete ${n} selected` : "Delete selected"; } if (saveSel) { saveSel.disabled = !n; saveSel.textContent = n ? `Save ${n} selected` : "Save selected"; }
       if (all) { all.checked = n > 0 && n === boxes.length; all.indeterminate = n > 0 && n < boxes.length; } boxes.forEach(x => x.closest(".recrow").classList.toggle("sel", x.checked)); };
-    boxes.forEach(x => x.onchange = sync);
-    if (all) all.onchange = () => { boxes.forEach(x => x.checked = all.checked); sync(); };
+    // (10.34) the picked mixes are made ready as you tick them, so the share sheet opens right on the tap: iPhone only opens it
+    // straight from a tap (waiting for the files first lost the tap, and it fell back to one download at a time)
+    const ready = new Map(); const prepFiles = () => { for (const id of picked()) if (!ready.has(id)) { ready.set(id, null);
+      getBlob(id).then(blob => { const r = getRecs().find(x => x.id === id); if (blob && r) ready.set(id, new File([blob], r.name.replace(/[\\/:*?"<>|]/g, "-") + "." + r.ext, { type: blob.type || "audio/mp4" })); else ready.delete(id); }).catch(() => ready.delete(id)); } };
+    const sync0 = sync; const syncP = () => { sync0(); prepFiles(); };
+    boxes.forEach(x => x.onchange = syncP);
+    if (all) all.onchange = () => { boxes.forEach(x => x.checked = all.checked); syncP(); };
     // (10.33) SAVE SEVERAL AT ONCE: one share sheet with every picked mix (Save to Files takes them all), else one download each
-    if (saveSel) saveSel.onclick = async () => { const ids = picked(); if (!ids.length) return; const files = [];
+    if (saveSel) saveSel.onclick = async () => { const ids = picked(); if (!ids.length) return; let files = ids.map(id => ready.get(id)).filter(Boolean);
+      if (files.length === ids.length && navigator.canShare && navigator.canShare({ files })) {   // all ready: straight from the tap
+        try { await navigator.share({ files, title: `${files.length} Apex mixes` }); toast(`${files.length} mix${files.length === 1 ? "" : "es"} saved.`); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+      files = [];
       for (const id of ids) { const r = getRecs().find(x => x.id === id), blob = r && await getBlob(id); if (blob) files.push(new File([blob], r.name.replace(/[\\/:*?"<>|]/g, "-") + "." + r.ext, { type: blob.type || "audio/mp4" })); }
       if (!files.length) return toast("Those recordings are missing.");
       try { if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: `${files.length} Apex mixes` }); toast(`${files.length} mix${files.length === 1 ? "" : "es"} saved.`); return; } } catch (e) { if (e && e.name === "AbortError") return; }
