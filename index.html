@@ -73,7 +73,12 @@ button{cursor:pointer}
 .top .grow{flex:1}
 .search{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;width:min(260px,34vw);min-width:0}
 .search::placeholder{color:var(--faint)}
-.search:focus{border-color:var(--cyan)}
+.search:focus,.qwrap:focus-within{border-color:var(--cyan)}
+.qwrap{position:relative;display:flex;align-items:center}
+.qwrap .qin{flex:1 1 auto;min-width:0;width:100%;border:0;background:transparent;color:inherit;font:inherit;padding:0 26px 0 0;margin:0;outline:none;-webkit-appearance:none;appearance:none}
+.qwrap .qin::placeholder{color:var(--faint)} .qwrap .qin::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.qclear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;border:0;padding:0;background:rgba(127,127,127,.35);color:inherit;font-size:16px;line-height:24px;font-weight:700;cursor:pointer}
+.qwrap .qin:placeholder-shown + .qclear{display:none}
 
 /* main */
 .main{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:0}
@@ -310,7 +315,7 @@ button{cursor:pointer}
 .recrow .rh{display:flex;align-items:flex-start;gap:10px}
 .recrow .rh input,.recbar input{width:22px;height:22px;flex:none;accent-color:var(--red);margin:1px 0 0}
 .recrow.sel{border-color:color-mix(in srgb,var(--red) 60%,transparent)}
-.recbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}
+.recbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:0 0 10px} .recbar .rbtns{display:flex;gap:6px;flex-wrap:wrap} .recbar label{display:flex;align-items:center;gap:8px;font-weight:600}
 .recbar label{display:flex;align-items:center;gap:8px;font-weight:600}
 .recbar .btn.del{color:var(--red);border-color:color-mix(in srgb,var(--red) 55%,transparent)}
 .recbar .btn.del:disabled{opacity:.45}
@@ -362,8 +367,8 @@ button{cursor:pointer}
 .list .row.mixgreen{box-shadow:inset 4px 0 0 #22c55e} .list .row.mixorange{box-shadow:inset 4px 0 0 var(--orange)}
 .list .row.mixgreen:not(.xpl) .r-t b{color:#22c55e!important} .list .row.mixorange:not(.xpl) .r-t b{color:var(--orange)!important}
 .mixlegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:2px 0 8px;opacity:.9} .mixlegend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
-.genrebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 6px} .genrebar .gl{font-size:12px;opacity:.75;margin-right:4px}
-.gchip{font-family:inherit;font-weight:600;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;cursor:pointer} .gchip small{opacity:.7;font-weight:500;margin-left:2px} .gchip.on{background:var(--gold);color:#111;border-color:transparent}
+.genrebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;align-items:center;margin:2px 0 6px;max-width:460px} .genrebar .gl{grid-column:1/-1;font-size:12px;opacity:.75}
+.gchip{text-align:center;font-family:inherit;font-weight:600;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;cursor:pointer} .gchip small{opacity:.7;font-weight:500;margin-left:2px} .gchip.on{background:var(--gold);color:#111;border-color:transparent}
 .genreact{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px;font-size:13px}
 .mixtag.m{color:var(--green);background:rgba(74,222,128,.12)} .mixtag.r{color:var(--cyan);background:var(--cyan-wash)} .mixtag.c{color:var(--gold);background:var(--gold-wash)} .mixtag.x{color:var(--faint)}
 .mixctl{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;font-size:13px;color:var(--muted)}
@@ -596,9 +601,10 @@ button{cursor:pointer}
   .player{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
   .player:not(.open) .lower{flex-wrap:nowrap;gap:6px;min-width:0}
   .player:not(.open) #mixBtn,.player:not(.open) .fx{display:none}
-  .player:not(.open) .transport{flex:1 1 auto;min-width:0;gap:6px}
+  .player:not(.open) .transport{flex:1 1 auto;min-width:0;gap:10px;justify-content:center}
+  .player:not(.open) .lower::before{content:"";flex:none;width:40px;order:-1}   /* (10.33: balances the arrow on the right, so play and REC sit in the middle of the bar) */
   .recbtn{padding:6px 10px;min-height:38px;flex:none}
-  .transport .recbtn{margin-left:auto;margin-right:auto}   /* (well away from ⏭ and the arrow: it was 6 px from ⏭ and got tapped by mistake) */
+  .transport .recbtn{margin-left:14px;margin-right:0}   /* (well away from ⏭ and the arrow: it was 6 px from ⏭ and got tapped by mistake) */
   .recbtn.on .rlbl{display:none}
   .more-ctl{flex:none}
 }
@@ -646,7 +652,7 @@ html,body{max-width:100%;overflow-x:hidden;overscroll-behavior:none}   /* (no pu
     <div class="brand"><video class="logo" id="logo" src="logo.mp4" poster="logo-poster.jpg" autoplay muted loop playsinline preload="auto" aria-label="Apex Studios DJ App logo"></video></div>
     <div class="titlebox"><span class="word" id="word" aria-label="Apex Studios DJ App"></span><button class="ver" id="verBtn" type="button" title="See what changed in each version"></button></div>
     <div class="tright">
-    <input class="search" id="q" type="search" placeholder="Search songs or artists" aria-label="Search songs or artists">
+    <span class="search qwrap"><input class="qin" id="q" type="search" placeholder="Search songs or artists" aria-label="Search songs or artists" autocomplete="off" enterkeyhint="search"><button type="button" class="qclear" id="qClear" aria-label="Clear the search" title="Clear">×</button></span>
     <button class="btn addfolder" id="folderBtn" type="button" aria-label="Folders" title="Folders: create, title and fill your folders"><svg class="ficon" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="fg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3347"/><stop offset="1" stop-color="#3fd0ff"/></linearGradient><filter id="fg2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation=".8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect width="32" height="32" rx="7" fill="#0b0d18"/><g filter="url(#fg2)" fill="none" stroke="url(#fg1)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9a2 2 0 0 1 2-2h6l2.4 2.4H26a2 2 0 0 1 2 2V24a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 22.5v-8.5l6-1.4v7.6"/><circle cx="12.6" cy="22.6" r="1.6"/><circle cx="18.6" cy="20.3" r="1.6"/></g></svg><span>Folders</span></button>
     <button class="addbooth" id="addBtn" type="button" aria-label="Add music" title="Add songs from this device"><svg viewBox="372 676 280 196" aria-hidden="true"><defs><linearGradient id="aeq" x1="0" y1="700" x2="0" y2="860" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff3347"/><stop offset=".5" stop-color="#9b2c9a"/><stop offset="1" stop-color="#3fd0ff"/></linearGradient><filter id="aef" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M412 850 V790 M462 850 V740 M512 850 V710 M562 850 V750 M612 850 V800" fill="none" stroke="url(#aeq)" stroke-width="34" stroke-linecap="round" filter="url(#aef)"/></svg></button>
     <input id="file" type="file" multiple hidden accept="audio/*,video/mp4,video/quicktime,video/webm,.mp3,.m4a,.mp4,.m4v,.aac,.wav,.aif,.aiff,.flac,.ogg,.opus,.webm,.mov,.caf,.json,application/json">
@@ -773,10 +779,11 @@ function toast(msg, ms = 3800) { // a short note at the bottom: tap it (or its �
 
 /* ---------- settings ---------- */
 const DROP_LINES = [[1, "Gonna make your body rock, rock, rock. It's going down!"], [2, "DJ Stylez throwing it down"], [3, "DJ Stylez, rock rock rock"], [4, "Your beat calibration and adrenaline… You ready? Oh, I'm ready! (take 3)"], [5, "Your planet is being rocked by the sounds of DJ Stylez"], [6, "That's my man DJ Stylez, throwing down"], [7, "Your beat calibration and adrenaline… You ready? Oh, I'm ready! (take 2)"]];
-const S = Object.assign({ automix: true, mixBeats: 64, style: "vocal", flavor: "surprise", mixSpot: "smart", maxStretch: 3, nextMode: "order", loop: true, easeBack: true, bassSwap: true,
+const S = Object.assign({ automix: true, mixBeats: 96, style: "vocal", flavor: "surprise", mixSpot: "smart", maxStretch: 3, nextMode: "order", loop: true, easeBack: true, bassSwap: true,
   dropEvery: 2, dropVoice: "rocko", dropOn: [1, 2, 3, 4, 5, 6, 7], dropHorn: true, drops: [], vol: 0.8, muted: false, plSort: "bpm", normalize: true, novocals: false, clean: false, cleanUnscanned: "novocal", cleanHow: "drop" }, lsGet("cb.settings") || {});
 if (![96, 64, 48, 32, 24, 16, 8].includes(S.mixBeats)) S.mixBeats = 64;
-if (!S.mixExt) { if (S.mixBeats === 32) S.mixBeats = 64; S.mixExt = 1; }   // the extended beat mix: 64 beats of both songs together by default
+if (!S.mixExt) { if (S.mixBeats === 32) S.mixBeats = 64; S.mixExt = 1; }
+if (S.mixExt < 2) { if (S.mixBeats === 64) S.mixBeats = 96; S.mixExt = 2; }   // (10.33, Tony: "the mix in needs more energy and mix time": 96 beats of both songs together by default)   // the extended beat mix: 64 beats of both songs together by default
 if (!S.cleanLevel) S.cleanLevel = "standard"; if (!S.unmatched) S.unmatched = "play";
 S.cleanHow = "drop";   // (9.60: "Silence" is gone: Clean takes out just the word's voice, the beat, mids and highs play on at full level)
 if (S.orderV !== 1) Object.assign(S, { plSort: "mix", orderV: 1 }); // songs show in the order auto mix plays them
@@ -1662,7 +1669,7 @@ function planPro(d, nt, manual) {
   const origin = t.grid ? t.grid.downbeat : (t.beatOffset || 0);
   const snapUp = x => origin + Math.ceil((x - origin - 0.01) / bar) * bar, lastBar = origin + Math.floor((endP - origin) / bar) * bar;
   const minStart = cur + (manual ? 1.5 : 3) * (d.el.playbackRate || 1);
-  let M = null, loop = null;
+  let M = null, loop = null, winLo = 0;
   if (!manual && t.apex && Array.isArray(t.apex.ph)) {
     const P = t.apex.ph, blocks = []; let bs = null;
     for (const [s0, e0, v] of P) { if (v <= 0.3) { if (bs == null) bs = s0; } else if (bs != null) { blocks.push([bs, s0]); bs = null; } }
@@ -1684,6 +1691,17 @@ function planPro(d, nt, manual) {
   // then leaves; the new words come in after it), so the cut sits (56 + the lead-in) beats before that line ends
   if (master && !manual) { const lastS = lastSungSec(t, endP); if (lastS != null) { const m2 = snapUp(lastS - (56 + loopLen) * pA); if (m2 >= Math.max(minStart, 0.2 * dur)) M = m2; } }
   if (manual || M < minStart) M = snapUp(minStart);
+  // (10.33, Tony: "the new song beats ... should come into the mix at about 60 to 75% of the mix out song, not at the very end"):
+  // the mix starts in the 60-75% stretch of the playing song, on a stretch without words when there is one, else on the phrase
+  // nearest two thirds of the way in. The old song's voice may ride the new beat from there (to the end of a line)
+  if (!manual && S.mixAt !== "end" && dur > 60) { const lo = 0.6 * dur, hi = 0.75 * dur;
+    if (M > hi + 0.01 || M < lo - 0.01) { let pickM = null;
+      if (t.apex && Array.isArray(t.apex.ph)) for (const [s0, e0, v] of t.apex.ph) { if (v > 0.3) continue; const c = snapUp(Math.max(s0, minStart)); if (c >= lo && c <= hi) { pickM = c; break; } }
+      if (pickM == null) { const c = origin + Math.round((0.66 * dur - origin) / ph) * ph; pickM = c >= minStart ? c : snapUp(Math.max(minStart, lo)); }
+      // a short song (the whole mix is longer than its last 40%): the latest phrase or bar where the whole mix still fits
+      if (pickM + need > endP) { const fit = endP - need; const cPh = origin + Math.floor((fit - origin) / ph) * ph, cBar = origin + Math.floor((fit - origin) / bar) * bar; pickM = cPh >= lo - 16 * pA ? cPh : cBar; }
+      if (pickM >= minStart && pickM + need <= endP + 0.01) { M = pickM; loop = null; } }
+    winLo = Math.min(M, lo); }
   // THE OLD SONG MUST STILL HAVE A STEADY KICK for the whole blend (that's what the two beats lock on, kick on kick): if the
   // planned spot runs into its fade-out or a beatless outro, the mix moves back to the last phrase where it does
   let kickCov = null;
@@ -1693,13 +1711,13 @@ function planPro(d, nt, manual) {
     kickCov = cov(M);
     if (kickCov < 0.75) {
       let bm = M, bc = kickCov;
-      for (let m = origin + Math.floor((endP - need - origin) / (16 * pA)) * 16 * pA; m >= Math.max(minStart, 0.3 * dur); m -= 16 * pA) { const c = cov(m); if (c >= 0.75) { bm = m; bc = c; break; } if (c > bc + 0.05) { bm = m; bc = c; } }
+      for (let m = origin + Math.floor((endP - need - origin) / (16 * pA)) * 16 * pA; m >= Math.max(minStart, 0.3 * dur, winLo - 0.01); m -= 16 * pA) { const c = cov(m); if (c >= 0.75) { bm = m; bc = c; break; } if (c > bc + 0.05) { bm = m; bc = c; } }
       if (bm !== M) { M = bm; loop = null; } kickCov = bc;
     }
     // ...AND ITS DRUM MAP TIGHT THERE: the old song is the clock every beat of the new one locks to, so if its map is loose
     // over the planned stretch (a live drummer's fill, a breakdown), the mix moves back to the latest phrase where it isn't
     if (t.prep && t.prep.q && !master) { const span = mixShape().TOT * pA, okAt = m => { const a0 = m + loopLen * pA; return mapOk(t, a0, a0 + span); };
-      if (!okAt(M)) for (let m = M - 16 * pA; m >= Math.max(minStart, 0.3 * dur); m -= 16 * pA) if (okAt(m) && cov(m) >= 0.75) { M = m; loop = null; break; } }
+      if (!okAt(M)) for (let m = M - 16 * pA; m >= Math.max(minStart, 0.3 * dur, winLo - 0.01); m -= 16 * pA) if (okAt(m) && cov(m) >= 0.75) { M = m; loop = null; break; } }
   }
   return { start: M, swap: M + need, end: M + need, pro: true, loop, loopLen, mode, kickCov };
 }
@@ -3506,10 +3524,30 @@ async function startProMix() {
     else moves.push("clean blend");
     // A SNARE ROLL INTO THE BASS SWAP (about one mix in three): the new song's own snare, quarters, then eighths, then
     // sixteenths over the 8 beats before the swap, rising, landing on the swap's downbeat
-    if (extrasOn("roll") && warp && warp.info.ok && mode === "beat" && SWb >= 12 && swapMoveNext()) {
-      const k0 = SWb - 8, busy = (teaseBreak && teaseAt + teaseLen * P > tCut + k0 * P - 0.01) || (answer && answer.j0 + answer.lenB > k0), sh = busy ? null : snareHit(nt, to.el.buf, bStart + bPre * pB, pB);
-      if (sh != null) { const gR = Rmix ? gridAt(tCut) : null, bt = k => gR ? gR(k) : warp.T && warp.T[k] != null ? warp.T[k] : tCut + k * P;
-        ownSnareRoll(to.el.buf, sh, rBx, bt, SWb, 0.8 * lvl(sh - 0.02, sh + 0.12, 200)); moves.push(`snare roll into the bass swap (the new song's own snare) over beats ${k0}-${SWb}`); }
+    const SWk = warp && warp.info.ok ? SWb : Math.round((tSwap - tCut) / P);   // (10.33: the swap beat of every beat mix, the classic one too)
+    if (extrasOn("roll") && ((warp && warp.info.ok) || Rmix) && mode === "beat" && SWk >= 12 && (S.stack !== false || swapMoveNext())) {
+      const k0 = SWk - 8, busy = (teaseBreak && teaseAt + teaseLen * P > tCut + k0 * P - 0.01) || (answer && answer.j0 + answer.lenB > k0), sh = busy ? null : snareHit(nt, to.el.buf, bStart + bPre * pB, pB);
+      if (sh != null) { const gR = Rmix ? gridAt(tCut) : null, bt = k => gR ? gR(k) : warp && warp.T && warp.T[k] != null ? warp.T[k] : tCut + k * P;
+        ownSnareRoll(to.el.buf, sh, rBx, bt, SWk, 0.8 * lvl(sh - 0.02, sh + 0.12, 200)); moves.push(`snare roll into the bass swap (the new song's own snare) over beats ${k0}-${SWk}`); }
+    }
+    // THE STACKED MIX (10.32, Tony: "at least 3-4 per mix ... put our inventory to work in overdrive"): on top of the lead-in
+    // move and the snare roll, the blend gets a vocal hook from the library where neither song sings, a run of the new song's
+    // keyboard stabs between the old song's lines, and live percussion riding the new beat after the bass swap. Each one only
+    // where it fits, on the mix's real beats (the drum maps), as every other extra
+    if (S.stack !== false && mode === "beat" && Rmix) {   // (10.33: the classic beat mix gets the stack too, not only the MIDI-clock one)
+      const W = !!(warp && warp.info.ok), lim = W ? Math.min(fadeB != null ? fadeB : mixEnd, mixEnd) : Math.round((tEnd - tCut) / P), used = [];
+      if (teaseBreak && teaseAt != null) { const j = (teaseAt - tCut) / P; used.push([j, j + teaseLen]); }
+      if (answer) used.push([answer.j0, answer.j0 + answer.lenB]);
+      if (moves.some(m => m.startsWith("snare roll"))) used.push([SWk - 8, SWk]);
+      const free = (a, b) => b <= lim && used.every(([u0, u1]) => b <= u0 || a >= u1), vB = bVoiceT != null ? (bVoiceT - tCut) / P : 1e9;
+      const hk = extrasOn("hooks") && S.useHooks !== false && !hookPlan ? hookFor(nt, ft, Nb) : null;
+      if (hk) { const need = Math.ceil((hookEnd(hk) - (hk.h.hook.lead || 0)) / (60 / hk.h.hook.bpm)) + 2;
+        for (let j = 8; j + need <= Math.min(lim, vB - 1); j += 4) if (free(j - 1, j + need) && aQuiet(aCut + (j - 1) * pA, aCut + (j + need) * pA)) {
+          const hp2 = hookFx(hk, tCut + j * P, Nb, Rmix, gridAt(tCut + j * P)); if (hp2) { used.push([j - 1, j + need]); moves.push(`vocal hook “${String(hk.h.hook.text || hk.h.hook.from || "").slice(0, 40)}” at beat ${j}`); } break; } }
+      if (riff != null && extrasOn("stabs")) { let done = false;
+        for (const L of [16, 8]) { if (done) break; for (let j = 4; j + L <= Math.min(SWk, lim); j += 4) if (free(j, j + L) && aQuiet(aCut + j * pA, aCut + (j + L) * pA)) {
+          const r = keysStabRun(to.el.buf, riff, pB, rBx, gridAt(tCut), pbB, lvl(riff, riff + 8 * pB, 380), j, L / 4); if (r) { used.push([j, j + L]); moves.push(`keyboard stab run from the new song (${L / 4} bars, beats ${j}-${j + L})`); } done = true; break; } } }
+      if (extrasOn("perc") && SWk + 8 <= mixEnd) { const pk = percLayer(tCut + SWk * P, 16, P, 0.22, gridAt(tCut + SWk * P)); moves.push(`${pk} percussion riding the new beat after the swap (16 beats)`); }
     }
   }
   // the extended section: live percussion over both locked beats, a snare roll into the mashup
@@ -3735,9 +3773,12 @@ function keepHook(id, buf) {
   for (let i = 0; hookBufs.size > 8 && i < 40; i++) { const k = hookBufs.keys().next().value, held = (nextHook && nextHook.h.id === k) || (ownHook && ownHook.h.id === k);
     const b = hookBufs.get(k); hookBufs.delete(k); if (held) hookBufs.set(k, b); }
 }
+/* TONY'S FAVORITE SAMPLES (Oct 22): their hooks and breaks come first whenever they fit the tempo and key */
+const FAV_RX = /axel f|don'?t stop the rock|own risk|electric kingdom|siberian|egypt|look ?out week ?end|when i hear music|magic mike|apache|fly like an eagle|forget about me|lil boo thang|best of my love|ride like the wind/i;
+const isFavSample = h => !!h && FAV_RX.test(`${h.title || ""} ${h.fileName || ""} ${(h.hook && h.hook.from) || ""}`);
 function pickHook(nt, ft, N) {
   const ok = [...st.hooks.values()].filter(h => h.hook && h.hook.bpm && Array.isArray(h.hook.bt) && Math.abs(N / h.hook.bpm - 1) <= 0.08 && h.hook.from !== nt.title && (!ft || h.hook.from !== ft.title) && hookClean(h));   // (a sample never carries a cuss word, Clean mode or not)
-  const rank = h => { const c = compat(nt.key, h.hook.key).level; return ({ perfect: 0, good: 1, ok: 3, clash: 9, unknown: 4 })[c] + Math.abs(N / h.hook.bpm - 1) * 40 + (hooksUsed.includes(h.id) ? 6 : 0) + Math.random(); };
+  const rank = h => { const c = compat(nt.key, h.hook.key).level; return ({ perfect: 0, good: 1, ok: 3, clash: 9, unknown: 4 })[c] + Math.abs(N / h.hook.bpm - 1) * 40 + (hooksUsed.includes(h.id) ? 6 : 0) - (isFavSample(h) ? 2.5 : 0) + Math.random(); };
   return ok.filter(h => ["perfect", "good", "ok"].includes(compat(nt.key, h.hook.key).level)).sort((a, b) => rank(a) - rank(b))[0] || null;
 }
 /* CLASSIC BEAT LOOPS (from the Mac's Beat Loops folder): a loop within 8% of the mix tempo, rotated so the same one doesn't
@@ -3759,7 +3800,7 @@ function rotLoopBuf(buf, h) {
 function bridgeLoop(N, kind = "drums") {
   const ok = [...st.loops.values()].filter(h => loopReady(h, N));
   if (!ok.length) return null;
-  const pref = ok.filter(h => h.loop.kind === kind), pool = pref.length ? pref : ok;
+  const pref = ok.filter(h => h.loop.kind === kind), pool0 = pref.length ? pref : ok, favs = pool0.filter(isFavSample), pool = favs.length && Math.random() < 0.6 ? favs : pool0;   // (Tony's favorite breaks 6 times in 10 when one fits)
   loopBag = loopBag.filter(id => pool.some(h => h.id === id)); if (!loopBag.length) loopBag = pool.map(h => h.id).sort(() => Math.random() - 0.5);
   const id = loopBag.pop(), h = st.loops.get(id); return { h, buf: loopBufs.get(id) };
 }
@@ -3769,7 +3810,7 @@ async function preloadLoops(N) { // the loops near this tempo, unpacked once (th
   const near = [...st.loops.values()].filter(h => h.loop && Array.isArray(h.loop.bt) && Math.abs(N / h.loop.bpm - 1) <= 0.08);
   for (const id of [...loopBufs.keys()]) if (loopBufs.size > 12 && !near.some(h => h.id === id)) loopBufs.delete(id);
   if (near.length > 12) { const held = near.filter(h => loopBufs.has(h.id)).sort(() => Math.random() - 0.5); for (const h of held.slice(0, Math.max(0, held.length - 9))) loopBufs.delete(h.id); }   // (3 or more swapped for fresh ones each time)
-  const want = near.filter(h => !loopBufs.has(h.id)).map(h => [h, Math.abs(N / h.loop.bpm - 1) + Math.random() * 0.03]).sort((a, b) => a[1] - b[1]).map(x => x[0]).slice(0, Math.max(0, 12 - loopBufs.size));
+  const want = near.filter(h => !loopBufs.has(h.id)).map(h => [h, Math.abs(N / h.loop.bpm - 1) + Math.random() * 0.03 - (isFavSample(h) ? 0.05 : 0)]).sort((a, b) => a[1] - b[1]).map(x => x[0]).slice(0, Math.max(0, 12 - loopBufs.size));
   for (const h of want) {
     try { const b = await audioBlob(h.id); loopBufs.set(h.id, rotLoopBuf(await decode(await b.arrayBuffer()), h)); } catch (e) {}
   }
@@ -3947,7 +3988,7 @@ function nextMove(mode, wordOk, riffOk) {
   // (the beat audit: one move on every mix it fits, so each extra is measured on a full set)
   const fm = window.__forceMove; if (fm && on[fm] && !(fm === "tease" && !wordOk) && !((fm === "riff" || fm === "stabs") && !riffOk) && !(mode === "ride" && (fm === "riff" || fm === "stabs" || fm === "swell"))) return (lastMove = fm);
   for (let tries = 0; tries < 16; tries++) {
-    if (!moveBag.length) { moveBag = ["riff", "stabs", "swell", "tease", "riff", "clean", "scratch"]; for (let i = moveBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [moveBag[i], moveBag[j]] = [moveBag[j], moveBag[i]]; } }
+    if (!moveBag.length) { moveBag = ["riff", "stabs", "swell", "tease", "riff", ...(S.stack === false ? ["clean"] : []), "scratch"]; for (let i = moveBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [moveBag[i], moveBag[j]] = [moveBag[j], moveBag[i]]; } }
     const m = moveBag.shift();
     if ((m !== "clean" && !on[m]) || m === lastMove || (m === "tease" && !wordOk) || ((m === "riff" || m === "stabs") && !riffOk) || (mode === "ride" && (m === "riff" || m === "stabs" || m === "swell"))) continue;
     return (lastMove = m);
@@ -3978,7 +4019,7 @@ function bLowWait(d, t0, tOn) {
 /* THE NEW BEAT BLENDS IN (10.31, Tony's recordings Oct 22: "it just needs a gradual blend"): it rises from nothing on a
    smooth curve, a quarter of its level after 4 beats, half after 8, most of it by 16 and all of it by 24 (or by the swap),
    instead of landing at 60% on the first beat. bRiseAt(jb) is the same curve for the level rider */
-const RISE_PTS = [[0, 0], [4, 0.25], [8, 0.5], [12, 0.68], [16, 0.82], [24, 1]];
+const RISE_PTS = [[0, 0.3], [4, 0.45], [8, 0.6], [12, 0.72], [16, 0.85], [24, 1]];   // (10.33: "the new song beats should be defined": it comes in clearly heard at 30%, then builds)
 function bRiseAt(jb, untilB = 1e9) { const x = Math.min(jb, untilB); if (x >= 24) return 1; for (let k = 1; k < RISE_PTS.length; k++) { const [b1, v1] = RISE_PTS[k], [b0, v0] = RISE_PTS[k - 1]; if (x <= b1) return v0 + (v1 - v0) * (x - b0) / (b1 - b0); } return 1; }
 function bRise(t0, P, g, until) {
   const out = [[t0 - 0.01, 0.0001, "set"]], uB = (until - t0) / P;
@@ -4071,8 +4112,29 @@ function keysStab(buf, at, pB, rB, tCut, P, g0, G, pb) {
   const hit = (x, d, lenB) => { const s = actx.createBufferSource(), e = actx.createGain(), when = G(x), tE = G(x + lenB); s.buffer = buf;
     e.gain.setValueAtTime(0, when); e.gain.linearRampToValueAtTime(1, when + 0.004); e.gain.setValueAtTime(1, tE - 0.02); e.gain.linearRampToValueAtTime(0, tE);
     s.connect(e); e.connect(hp); laySample(s, pb, sAt(d), G, x, lenB, rB); s.stop(tE + 0.02); };
-  for (let k = 0; k < 4; k++) hit(-4 + k + 0.5, 4 + k + 0.5, 0.32);   // the "and" of every beat
-  hit(-0.5, 7.5, 0.22); hit(-0.25, 7.75, 0.22);                        // 16th pick-up
+  // (10.32, Tony: "make sure the stabs are long enough to have fun with it": two full bars, not four blips)
+  for (let k = 0; k < 4; k++) hit(-8 + k + 0.5, k + 0.5, 0.5);        // bar one: the "and" of every beat, held half a beat
+  hit(-4, 4, 1); hit(-3, 5, 0.75); hit(-2, 6, 1); hit(-1, 7, 0.45);    // bar two: the riff's own beats, held
+  hit(-0.5, 7.5, 0.24); hit(-0.25, 7.75, 0.24);                        // 16th pick-up
+}
+/* A KEYBOARD STAB RUN inside the blend (10.32): the new song's riff chopped over `bars` bars from mix beat x0, between the old
+   song's lines: off-beat stabs held half a beat, then a bar of held chords, a 16th pick-up into the last downbeat, echoing out */
+function keysStabRun(buf, at, pB, rB, G, pb, g0, x0, bars) {
+  if (at == null || !buf || !G) return null;
+  const ok = pb && pb.length >= 8, u0 = ok ? songBeatIdx(pb, at) : 0, sAt = d => ok ? songBeatAt(pb, u0 + d) : at + d * pB;
+  const out = actx.createGain(), hp = biq("highpass", 380, 0.7), dl = actx.createDelay(2), fb = actx.createGain(), wet = actx.createGain(), P = G(x0 + 1) - G(x0);
+  dl.delayTime.value = Math.min(1.9, 0.75 * P); fb.gain.value = 0.35; wet.gain.value = 0.35;
+  out.gain.setValueAtTime(0.7 * g0, G(x0)); out.gain.linearRampToValueAtTime(g0, G(x0 + 4 * bars - 1));
+  hp.connect(out); out.connect(bus); out.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(bus);
+  const hit = (x, d, lenB) => { const s = actx.createBufferSource(), e = actx.createGain(), when = G(x), tE = G(x + lenB); s.buffer = buf;
+    e.gain.setValueAtTime(0, when); e.gain.linearRampToValueAtTime(1, when + 0.004); e.gain.setValueAtTime(1, tE - 0.02); e.gain.linearRampToValueAtTime(0, tE);
+    s.connect(e); e.connect(hp); laySample(s, pb, sAt(d), G, x, lenB, rB); s.stop(tE + 0.02); };
+  for (let i = 0; i < bars; i++) { const b = x0 + 4 * i, h = (i % 2) * 4, last = i === bars - 1;
+    if (i % 2 === 0) for (let k = 0; k < 4; k++) hit(b + k + 0.5, h + k + 0.5, 0.5);
+    else { hit(b, h, 1.5); hit(b + 2, h + 2, 0.5); hit(b + 3, h + 3, last ? 0.45 : 1); }
+    if (last) { hit(b + 3.5, h + 3.5, 0.24); hit(b + 3.75, h + 3.75, 0.24); } }
+  echoOut(out, G(x0 + 4 * bars - 1), G(x0 + 4 * bars), P);
+  return { from: x0, to: x0 + 4 * bars };
 }
 /* REVERSE SWELL: the new song's first two beats played backwards, rising into its own downbeat at the cut-in */
 function reverseSwell(buf, b0, pB, rB, tCut, P, g0, G, pb) {
@@ -5054,7 +5116,6 @@ function mixableMap() {
 const GENRE_NAMES = ["Hip Hop", "Old School", "Classic Rock", "Dance"];
 function toggleGenre(g) {
   if (st.genres.has(g)) st.genres.delete(g);
-  else if (st.genres.size >= 3) return toast("Up to three genres at a time: take one off first.", 3000);
   else st.genres.add(g);
   renderAll();
 }
@@ -5089,7 +5150,7 @@ function renderList() {
   head += `</div></div>`;
   if (!pl && !st.sel && libAll().some(t => t.genres && t.genres.length)) {
     const cnt = g => libAll().filter(t => !t.bad && (t.genres || []).includes(g)).length, picked = [...st.genres];
-    head += `<div class="genrebar" role="group" aria-label="Genres (pick up to three)"><span class="gl">Genres (up to three)</span>${GENRE_NAMES.map(g => `<button type="button" class="gchip${st.genres.has(g) ? " on" : ""}" data-genre="${esc(g)}" aria-pressed="${st.genres.has(g)}">${esc(g)} <small>${cnt(g).toLocaleString()}</small></button>`).join("")}</div>`;
+    head += `<div class="genrebar" role="group" aria-label="Genres (pick one or more)"><span class="gl">Genres: pick one or more</span>${GENRE_NAMES.map(g => `<button type="button" class="gchip${st.genres.has(g) ? " on" : ""}" data-genre="${esc(g)}" aria-pressed="${st.genres.has(g)}">${esc(g)} <small>${cnt(g).toLocaleString()}</small></button>`).join("")}</div>`;
     if (picked.length) head += `<div class="genreact"><span><b>${esc(picked.join(" + "))}</b>: ${list.length.toLocaleString()} song${list.length === 1 ? "" : "s"}</span><button class="btn primary" type="button" data-act="genplaylist" ${list.length ? "" : "disabled"}>+ Make a playlist</button><button class="btn" type="button" data-act="genplay" ${list.length ? "" : "disabled"}>▶ Play</button><button class="btn ghost" type="button" data-act="genclear">Clear</button></div>`;
   }
   if (all.length > 1 && !st.sel) head += `<div class="mixlegend"><span><i style="background:#22c55e"></i>mixes with another song in your library</span><span><i style="background:#f97316"></i>doesn't mix yet</span></div>`;
@@ -6431,8 +6492,17 @@ function speakerSheet(outs) {
 $("#btBtn").onclick = speakerButton;
 
 /* ---------- versions ---------- */
-const APP_VERSION = "10.31";
+const APP_VERSION = "10.33";
 const CHANGELOG = [
+  ["10.33", "October 22, 2026", ["LONGER, BIGGER MIXES: both songs now ride together for 96 beats by default (it was 64), with the new beat coming in 60 to 75% of the way through the playing song",
+    "YOUR FAVORITE SAMPLES FIRST: Axel F, Don't Stop The Rock, Play At Your Own Risk, Electric Kingdom, Siberian Nights, Egyptian Lover, Lookout Weekend, When I Hear Music, Magic Mike Cuts The Record, Apache, Fly Like An Eagle and Don't You Forget About Me hooks and breaks are picked first whenever they fit the tempo and key",
+    "SEARCH: an × at the end of the search bar clears the whole line in one tap and keeps the keyboard up for your next search",
+    "GENRES: pick any of the four (Hip Hop, Old School, Classic Rock, Dance), together, for a playlist or to play; they sit two by two, Classic Rock and Dance under Hip Hop and Old School",
+    "RECORDED MIXES: tick as many as you like, then Save selected (one share sheet for all of them) or Delete selected, or Delete all in one go",
+    "MIXES START AT 60-75% OF THE PLAYING SONG (not at its very end), on a stretch without words when there is one; its voice can ride the new beat to the end of a line. The new beat comes in clearly heard (30%) and builds to full by beat 24",
+    "STACKED EXTRAS ON CLASSIC MIXES TOO: the hook, stab run, snare roll and percussion now go on every beat mix, not only the MIDI-clock ones. Play and REC sit in the middle of the player bar on the phone"]],
+  ["10.32", "October 22, 2026", ["STACKED MIXES: 3 to 5 extras on every beat mix instead of one. On top of the lead-in move: a vocal hook from your library where neither song sings, a 2-4 bar run of the new song's keyboard stabs between the old song's lines, a snare roll into the bass swap on every mix it fits (it was one in three) and live percussion riding the new beat after the swap",
+    "LONGER STABS: the lead-in keyboard stabs are two full bars (off-beat stabs held half a beat, then held chords and a 16th pick-up) instead of four short blips, and no mix draws a plain \"clean\" lead-in any more"]],
   ["10.31", "October 22, 2026", ["GRADUAL BLENDS: the new song's beat now rises in from nothing over 16 to 24 beats (it used to land at 60% on the first beat), with a riser sweeping into the bass swap",
     "VOICES ON TOP: while the old song still sings over the new beat, the new beat's mids sit 6 dB back and its highs 2 dB back, and with the song's stem its voice gets a 3 dB lift. Club polish on the whole mix: glue compression, a little low-end weight and air",
     "NEW WORDS START ON A SENTENCE: the next song's voice comes in at the start of a line (2 beats clear before it), never on a word after a breath, and the beat mix no longer holds its voice back until the mix's last beat (that cut its first words)",
@@ -6832,6 +6902,9 @@ $("#viewSel").onchange = e => { const v = e.target.value; if (v === "__new") { e
 $("#moreBtn").onclick = () => { const p = document.querySelector(".player"), open = !p.classList.contains("open"); p.classList.toggle("open", open); $("#moreBtn").setAttribute("aria-expanded", open); $("#moreBtn").setAttribute("aria-label", open ? "Hide extra controls" : "Show all controls"); };
 $("#wakeBtn").onclick = () => setWake(!wantWake);
 $("#q").addEventListener("input", e => { st.q = e.target.value.trim(); renderList(); bestPop(); });
+// the x at the end of the search bar (10.33): the whole line goes, the field keeps its keyboard for the next search
+$("#qClear").addEventListener("pointerdown", e => e.preventDefault());
+$("#qClear").addEventListener("click", () => { const q = $("#q"); q.value = ""; st.q = ""; renderList(); q.focus(); bestPop(); });
 function bestPop() {   // the search bar, tapped while a song plays: the best mixes for it, until you type
   let p = $("#bestPop"); const q = $("#q"), show = document.activeElement === q && !q.value.trim() && A().track;
   if (!show) { if (p) p.hidden = true; return; }
@@ -7017,8 +7090,8 @@ async function saveRecording() {
 function recSheet() {
   const recs = getRecs();
   openSheet(`<h2>My recorded mixes</h2>
-    ${recs.length > 1 ? `<div class="recbar"><label><input type="checkbox" id="recAll"> Select all</label><button class="btn del" type="button" id="recDelSel" disabled>Delete selected</button></div>` : ""}
-    ${recs.length ? `<div class="fm">${recs.map(r => `<div class="recrow" data-rid="${r.id}"><div class="rh">${recs.length > 1 ? `<input type="checkbox" data-rsel aria-label="Select ${esc(r.name)}">` : ""}<div style="display:grid;gap:4px;min-width:0"><span class="rn">${esc(r.name)}</span><span class="rm">${fmtLong(r.dur)} · ${(r.size / 1048576).toFixed(1)} MB · .${r.ext}</span></div></div>
+    ${recs.length ? `<div class="recbar"><label><input type="checkbox" id="recAll"> Select all</label><span class="rbtns"><button class="btn" type="button" id="recSaveSel" disabled>Save selected</button><button class="btn del" type="button" id="recDelSel" disabled>Delete selected</button><button class="btn del" type="button" id="recDelAll">Delete all (${recs.length})</button></span></div>` : ""}
+    ${recs.length ? `<div class="fm">${recs.map(r => `<div class="recrow" data-rid="${r.id}"><div class="rh"><input type="checkbox" data-rsel aria-label="Select ${esc(r.name)}"><div style="display:grid;gap:4px;min-width:0"><span class="rn">${esc(r.name)}</span><span class="rm">${fmtLong(r.dur)} · ${(r.size / 1048576).toFixed(1)} MB · .${r.ext}</span></div></div>
       <div class="rb"><button type="button" data-rplay>Play</button><button type="button" data-rsave>Save to my device</button><button type="button" class="del" data-rdel>Delete</button></div></div>`).join("")}</div>`
       : `<p>No recordings yet. Tap the red <b>REC</b> button on the control panel to record your mix, and tap it again to stop.</p>`}
     <p style="font-size:13px">Save to my device opens the share sheet on iPhone: choose Save to Files. Recording captures everything the app plays: both decks, blends, effects and drops.</p>
@@ -7049,10 +7122,23 @@ function recSheet() {
     // SEVERAL AT ONCE: tick the ones to go (or Select all), then one Delete for all of them
     const boxes = [...s.querySelectorAll("[data-rsel]")], all = s.querySelector("#recAll"), delSel = s.querySelector("#recDelSel");
     const picked = () => boxes.filter(x => x.checked).map(x => x.closest(".recrow").dataset.rid);
-    const sync = () => { const n = picked().length; if (delSel) { delSel.disabled = !n; delSel.textContent = n ? `Delete ${n} selected` : "Delete selected"; }
+    const saveSel = s.querySelector("#recSaveSel"), delAll = s.querySelector("#recDelAll");
+    const sync = () => { const n = picked().length; if (delSel) { delSel.disabled = !n; delSel.textContent = n ? `Delete ${n} selected` : "Delete selected"; } if (saveSel) { saveSel.disabled = !n; saveSel.textContent = n ? `Save ${n} selected` : "Save selected"; }
       if (all) { all.checked = n > 0 && n === boxes.length; all.indeterminate = n > 0 && n < boxes.length; } boxes.forEach(x => x.closest(".recrow").classList.toggle("sel", x.checked)); };
     boxes.forEach(x => x.onchange = sync);
     if (all) all.onchange = () => { boxes.forEach(x => x.checked = all.checked); sync(); };
+    // (10.33) SAVE SEVERAL AT ONCE: one share sheet with every picked mix (Save to Files takes them all), else one download each
+    if (saveSel) saveSel.onclick = async () => { const ids = picked(); if (!ids.length) return; const files = [];
+      for (const id of ids) { const r = getRecs().find(x => x.id === id), blob = r && await getBlob(id); if (blob) files.push(new File([blob], r.name.replace(/[\\/:*?"<>|]/g, "-") + "." + r.ext, { type: blob.type || "audio/mp4" })); }
+      if (!files.length) return toast("Those recordings are missing.");
+      try { if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: `${files.length} Apex mixes` }); toast(`${files.length} mix${files.length === 1 ? "" : "es"} saved.`); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+      for (const f of files) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); }
+      toast(`${files.length} mix${files.length === 1 ? "" : "es"} saved.`); };
+    // (10.33) DELETE ALL in one go, one confirm
+    if (delAll) delAll.onclick = () => { const ids = getRecs().map(x => x.id); if (!ids.length) return;
+      confirmSheet(`Delete all ${ids.length} recording${ids.length === 1 ? "" : "s"}?`, "Every recorded mix will be removed from this device.", `Delete all ${ids.length}`, async () => {
+        for (const id of ids) { await dbDel("audio", id).catch(() => {}); await dbDel("files", id).catch(() => {}); sessionAudio.delete(id); }
+        setRecs([]); toast(`${ids.length} recording${ids.length === 1 ? "" : "s"} deleted.`); recSheet(); }); };
     if (delSel) delSel.onclick = () => { const ids = picked(); if (!ids.length) return;
       confirmSheet(`Delete ${ids.length} recording${ids.length === 1 ? "" : "s"}?`, `${ids.length === 1 ? "It" : "They"} will be removed from this device.`, `Delete ${ids.length}`, async () => {
         for (const id of ids) { await dbDel("audio", id).catch(() => {}); await dbDel("files", id).catch(() => {}); sessionAudio.delete(id); }
